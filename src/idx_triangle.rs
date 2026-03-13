@@ -1,11 +1,8 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    hash::Hash,
-    iter::chain,
-    ops::Deref,
+    collections::{BTreeMap, BTreeSet, HashMap},
 };
 
-use log::{debug, trace, warn};
+use log::{debug, info, trace, warn};
 use nalgebra::{Unit, Vector3};
 
 use crate::{
@@ -15,7 +12,7 @@ use crate::{
 
 type Dir3 = Unit<Vector3<f64>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct IdxTriangle {
     pub verts: [Vertex; 3],
     pub norms: Option<[Normal; 3]>,
@@ -75,7 +72,8 @@ impl IdxTriangle {
                     {
                         triangles.push(IdxTriangle::new(
                             vec![v1, v2, v3],
-                            self.norms.map(|n| vec![n[i], n[j], n[k]]),
+                            None,
+                            //self.norms.map(|n| vec![n[i], n[j], n[k]]),
                         ));
                     }
                 }
@@ -115,6 +113,7 @@ impl From<Vec<Edge>> for Polygon {
         let mut next_vertex = edges[0].1;
 
         let mut visited = BTreeSet::new();
+        visited.insert((edges[0].0.idx, edges[0].1.idx));
 
         while next_vertex != end_vertex {
             verts.push(next_vertex);
@@ -139,7 +138,10 @@ impl From<Vec<Edge>> for Polygon {
         for edge in edges.iter() {
             assert!(
                 visited.contains(&(edge.0.idx, edge.1.idx)),
-                "Not all edges have been used in constructing the polygon"
+                "Not all edges have been used in constructing the polygon.\nPolygon: {:?}\nEdge unused {:?}\nFrom edges: {:?}",
+                verts.iter().map(|v| v.idx).collect::<Vec<_>>(),
+                edge,
+                edges.iter().map(|e| e.clone().into()).collect::<Vec<IdxEdge>>()
             );
         }
 
@@ -243,6 +245,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
                 new_edges.push(Edge(verts_in[i], verts_in[j]));
             }
         }
+        trace!("Edges between vertices inside the triangle: {:?}", new_edges.iter().map(|e| Into::<IdxEdge>::into(e.clone())).map(|IdxEdge(v0,v1)| (*v0, *v1)).collect::<Vec<_>>());
 
         trace!("Verts in: {:?}, Verts out: {:?}", verts_in, verts_out);
         // Get all segments that might intersect the triangle
@@ -271,7 +274,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
             _ => unreachable!(),
         }
 
-        trace!("Segments in triangle: {:?}", edges_v);
+        trace!("Segments to check intersections: {:?}", edges_v);
 
         // Find all intersections and segments that need to be included in the new triangles
         #[derive(Debug, Clone)]
@@ -457,6 +460,10 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
                     let v_left = colinear_verts[i - 1];
                     if !new_edges.contains(&Edge(v_left, v_i)) {
                         new_edges.push(Edge(v_left, v_i));
+                        trace!(
+                            "Adding segment between colinear vertices: {:?} and {:?}",
+                            v_left.idx, v_i.idx
+                        );
                     }
                 }
                 if i < colinear_verts.len() - 1 {
@@ -485,12 +492,14 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
             }
         }
 
-        trace!("New segments after handling colinearity: {:?}", new_edges);
+        trace!("New segments after handling colinearity: {:?}", new_edges.iter().map(|e| Into::<IdxEdge>::into(e.clone())).collect::<Vec<_>>());
         trace!("Colinear vertices: {:?}", colinear_blacklist);
 
         // TODO: Instead, we can complete the `new_segs` that would reprsent convex polygon
-
         let split_convex_polygon = SplitEdges(new_edges).intersect(&other);
+
+        info!("Intersection edges: {:?}", split_convex_polygon.0.iter().map(|e| Into::<IdxEdge>::into(e.clone())).collect::<Vec<_>>());
+
         let convex_polygon = Polygon::from(split_convex_polygon.0.clone());
 
         let triangles = convex_polygon.triangulate();
@@ -498,7 +507,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
     }
 
     #[inline]
-    fn split(&self, other: &SplitEdges) -> (Self::Inst, SplitEdges) {
+    fn split(&self, other: SplitEdges) -> (Self::Inst, SplitEdges) {
         let inter_edges = other.0.clone();
         let mut split_edges = other.0.clone();
         let mut diff_edges = Vec::new();
@@ -572,7 +581,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
                 if vert == other_vert {
                     continue;
                 }
-                if colinear_blacklist[&vert.idx].contains(&other_vert.idx) {
+                if colinear_blacklist.contains_key(&vert.idx) && colinear_blacklist[&vert.idx].contains(&other_vert.idx) {
                     continue;
                 }
                 let new_seg = Segment::new(vert.value, other_vert.value);
@@ -597,7 +606,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
         let diff_verts = Vertex::from_edges(&diff_edges);
         for edge in inter_edges.iter() {
             if diff_verts.contains(&edge.0) && diff_verts.contains(&edge.1) {
-                if colinear_blacklist[&edge.0.idx].contains(&edge.1.idx) {
+                if colinear_blacklist.contains_key(&edge.0.idx) && colinear_blacklist[&edge.0.idx].contains(&edge.1.idx) {
                     // Skip edges that are blacklisted
                     continue;
                 }

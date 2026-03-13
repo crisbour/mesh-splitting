@@ -1,15 +1,18 @@
 mod segment;
 mod collide;
 mod split;
+mod save;
 mod triangle;
 mod idx_triangle;
 pub mod primitives;
 pub mod mesh;
+pub mod export;
 
 use nalgebra::{Point3, Vector3};
-pub use segment::{Segment, SplitEdges};
 pub use collide::Collide;
+pub use save::Save;
 pub use split::Split;
+pub use segment::{Segment, SplitEdges};
 pub use triangle::Triangle;
 pub use idx_triangle::IdxTriangle;
 

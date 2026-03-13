@@ -2,7 +2,7 @@ use core::f64;
 
 use log::trace;
 use nalgebra::Point3;
-use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, PrimitiveIdx, Vertex}};
+use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxIntersection, PrimitiveIdx, Vertex}};
 
 #[derive(Debug)]
 pub struct Segment {
@@ -180,6 +180,7 @@ impl Collide<Point3<f64>> for Segment {
 // SplitEdges produced by polygon intersections after triangulation
 // ------------------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct SplitEdges(pub Vec<Edge>);
 
 impl SplitEdges {
@@ -301,6 +302,27 @@ impl SplitEdges {
             }
         }
         SplitEdges(edges)
+    }
+
+    pub fn rename_vertices(&mut self, vertex_map: &std::collections::HashMap<IdxIntersection, PrimitiveIdx>) {
+        for edge in &mut self.0 {
+            match edge.0.from {
+                Some(idx_inter) => {
+                    if let Some(&new_idx) = vertex_map.get(&idx_inter) {
+                        edge.0.idx = new_idx;
+                    }
+                },
+                _ => {}
+            }
+            match edge.1.from {
+                Some(idx_inter) => {
+                    if let Some(&new_idx) = vertex_map.get(&idx_inter) {
+                        edge.1.idx = new_idx;
+                    }
+                },
+                _ => {}
+            }
+        }
     }
 }
 

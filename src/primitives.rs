@@ -24,15 +24,15 @@ impl Edge {
 }
 
 #[derive(Clone, Debug, Copy, Hash)]
-pub struct IdxEdge(PrimitiveIdx, PrimitiveIdx);
+pub struct IdxEdge(pub PrimitiveIdx, pub PrimitiveIdx);
 
 impl IdxEdge {
     pub fn new(idx1: PrimitiveIdx, idx2: PrimitiveIdx) -> Self {
         let min_idx = idx1.min(idx2);
         let max_idx = idx1.max(idx2);
-        if min_idx == max_idx {
-            panic!("Edge cannot have the same vertex index: {:?}", idx1);
-        }
+        //if min_idx == max_idx {
+        //    panic!("Edge cannot have the same vertex index: {:?}", min_idx);
+        //}
         IdxEdge(min_idx, max_idx)
     }
 }
@@ -64,7 +64,7 @@ impl PartialEq for IdxEdge {
 impl Eq for IdxEdge {}
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub struct IdxIntersection(pub IdxEdge, pub IdxEdge);
 
 impl IdxIntersection {
@@ -96,11 +96,18 @@ impl PartialEq for IdxIntersection {
         edge_a1 == edge_a2 && edge_b1 == edge_b2
     }
 }
+impl Eq for IdxIntersection {}
 
 #[derive(Debug, Clone, Copy, Hash)]
 pub enum PrimitiveIdx {
     Global(usize),
     Local(usize),
+}
+
+impl Default for PrimitiveIdx {
+    fn default() -> Self {
+        PrimitiveIdx::Local(usize::MAX)
+    }
 }
 
 impl PartialEq for PrimitiveIdx {
@@ -140,7 +147,7 @@ impl Deref for PrimitiveIdx {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Default)]
 pub struct Vertex {
     pub value: Point3<f64>,
     pub idx: PrimitiveIdx,
@@ -159,6 +166,9 @@ impl Hash for Vertex {
 
 // NOTE: Assume the vertex indexing is allocated properly such that
 // no 2 distinct vertices will have the same idx
+// WARN: That doesn't seem to be the case in the Wavefront file =>
+// Must run collision detection and avoid allocating distinct PrimitiveIdx for the same vertex
+// position. Not so critical for the norms
 // WARN: When reallocating indexing, need to have clear barier in the code where the old and new
 // local indexing is used => Assume any matching between PrimitiveIdx::Local can't be done
 // reliably, hence the intersection is checked instead since `Local index |-> Intersection`
