@@ -168,7 +168,7 @@ pub fn parse_obj(
         .enumerate()
         .map(|(idx, obj)| {
             // NOTE: Don't support multiple groups per object
-            let obj_faces: Vec<IdxTriangle> = obj
+            let obj_faces: Vec<_> = obj
                 .groups
                 .iter()
                 .flat_map(|group| {
@@ -186,13 +186,20 @@ pub fn parse_obj(
                             .map(|idx_tuple| idx_tuple.2)
                             .map(|idx| idx.map(|i| Normal::new(i, &norms.borrow())))
                             .collect();
-                        IdxTriangle::new(tri_verts, tri_norms)
+                        (tri_verts, tri_norms)
                     })
                 })
                 .collect();
 
+            // Tag IdxTriangle with the correct idx that would be allocated to faces
+            let base_idx = faces.borrow().len();
+            let idx_tris: Vec<_> = obj_faces
+                .into_iter()
+                .enumerate()
+                .map(|(i, (tri_verts, tri_norms))| IdxTriangle::new(tri_verts, tri_norms, PrimitiveIdx::Global(base_idx + i)))
+                .collect();
             //faces.alllocate_size(obj_faces.len());
-            let polygons = faces.allocate_iter(obj_faces);
+            let polygons = faces.allocate_iter(idx_tris);
             println!("Allocated faces idx for mesh {}: {:?}", obj.name, polygons);
 
             Mesh {
@@ -221,12 +228,18 @@ pub struct Mesh {
 
 impl Mesh {
     pub fn push(&mut self, new_tris: Vec<IdxTriangle>) {
-        let new_polygons = self.faces.allocate_iter(new_tris);
+        let current_size = self.faces.borrow().len();
+        let new_polygons = self.faces.allocate_iter(
+            new_tris
+                .into_iter()
+                .enumerate()
+                .map(|(i, tri)| tri.into_global(current_size + i))
+        );
         self.polygons.extend(new_polygons);
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FaceIntersection {
     pub tri_u: PrimitiveIdx,
     pub tri_v: PrimitiveIdx,
@@ -299,9 +312,9 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
                 if tri_u.tri().overlap(&tri_v.tri()) {
                     info!("Intersect triangles {:?} and {:?} from meshes {:?} and {:?}",
                         idx_tri_u, idx_tri_v, self.idx, other.idx);
-                    let new_intersection = tri_u.intersect(&tri_v);
+                    let new_intersection = tri_u.intersect(tri_v);
                     assert!(
-                        !new_intersection.0.is_empty(),
+                        !new_intersection.edges.is_empty(),
                         "Intersection of overlapping triangles should not be empty"
                     );
                     intersections.push(FaceIntersection {
@@ -342,7 +355,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
         // Collect split edges derived from the target triangle
         for (idx_tri_u, tri_u) in tri_u_union.iter() {
             // Collect all splits with tri_u, identified by idx_tri_u:PrimitiveIdx
-            let mut splits = SplitEdges(vec![]);
+            let mut splits = SplitEdges::new(vec![]);
             // TODO: Instead of iterating through all, sort intersection and binary search for the
             // ones matching idx_tri_u
             other.iter().for_each(|intersection| {
@@ -352,7 +365,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
             });
 
             // Allocate vertices from splits, and keep track of the mapping from local vertex idx to global
-            let local_verts = Vertex::from_edges(&splits.0)
+            let local_verts = Vertex::from_edges(&splits.edges)
                 .into_iter()
                 .filter(|vert| matches!(vert.idx, PrimitiveIdx::Local(..)));
 
@@ -369,15 +382,20 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
             splits.rename_vertices(&idx_alloc_map);
 
             // Sanity check: All vertices in splits should now be allocated globally
-            Vertex::from_edges(&splits.0)
+            Vertex::from_edges(&splits.edges)
                 .into_iter()
                 .for_each(|vert| {
                     assert!(matches!(vert.idx, PrimitiveIdx::Global(_)), "All vertices in splits should be allocated globally");
                 });
 
-            // Split the triangle with the splits, and push to the new mesh
-            let (new_tris_u, _splits) = tri_u.split(splits);
-            new_mesh.push(new_tris_u);
+            if splits.is_empty() {
+                // No splits, push the original triangle to the new mesh
+                new_mesh.push(vec![tri_u.clone()]);
+            } else {
+                // Split the triangle with the splits, and push to the new mesh
+                let (new_tris_u, _splits) = tri_u.split(splits);
+                new_mesh.push(new_tris_u);
+            }
         }
 
         let new_face_inters = other

@@ -36,12 +36,13 @@ fn main() -> Result<()> {
 
     let mut resolved_meshes = Vec::new();
     let mut idx = meshes.len();
-    for i in 0..meshes.len()-1 {
+    for i in 0..meshes.len() {
         for j in i+1..meshes.len() {
             let mesh_a = &meshes[i];
             let mesh_b = &meshes[j];
             info!("Mesh {} and {} overlap: {}", mesh_a.name, mesh_b.name, mesh_a.overlap(mesh_b));
             let inter = mesh_a.intersect(mesh_b);
+            info!("Mesh {} and {} intersection: {:?}", mesh_a.name, mesh_b.name, inter);
             let (new_mesh_a, inter) = mesh_a.split(inter);
             let (new_mesh_b, inter) = mesh_b.split(inter);
             //if !inter.is_empty() {

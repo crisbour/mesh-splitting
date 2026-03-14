@@ -2,7 +2,7 @@ use core::f64;
 
 use log::trace;
 use nalgebra::Point3;
-use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxIntersection, PrimitiveIdx, Vertex}};
+use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxIntersection, Polygon, PrimitiveIdx, Vertex}};
 
 #[derive(Debug)]
 pub struct Segment {
@@ -180,46 +180,61 @@ impl Collide<Point3<f64>> for Segment {
 // SplitEdges produced by polygon intersections after triangulation
 // ------------------------------------------------------------------------------------
 
-#[derive(Clone)]
-pub struct SplitEdges(pub Vec<Edge>);
+#[derive(Clone, Debug)]
+pub struct SplitEdges {
+    /// All edges produced by intersection, including those after triangulation of the polygon(s)
+    pub edges: Vec<Edge>,
+    /// Perimeter edges of the intersection(s) , as indices into `edges`
+    pub outer: Vec<usize>,
+}
 
 impl SplitEdges {
-    /// Extract the segments that are overlapping the target triangle
-    pub fn intersect(&self, idx_tri: &IdxTriangle) -> SplitEdges {
-        trace!("Splitting triangle with segments: {:?}", self.0);
+    /// Construct a polygon from edges
+    /// TODO: Check that edges form a valid polygon, and that the order of vertices is consistent (e.g. counter-clockwise)
+    pub fn new(edges: Vec<Edge>) -> Self {
+        let outer = (0..edges.len()).collect();
+        Self { edges, outer }
+    }
+    /// Return perimeter edges
+    pub fn outer_edges(&self) -> Vec<Edge> {
+        self.outer.iter().map(|&i| self.edges[i].clone()).collect()
+    }
+    /// Triangulate the polygon formed by the outer edges, and add the resulting segments to the SplitEdges
+    ///   - WARN: This works only if outer edges describe a convex polygon
+    pub fn triangulate(&self) -> Self {
+        let convex_polygon = Polygon::from(self.outer_edges().clone());
 
-        // Convert to simple spatial triangle
-        let tri = idx_tri.tri();
+        let triangles = convex_polygon.triangulate();
 
-        let mut verts: Vec<Vertex> = Vec::new();
-        self.0.iter().for_each(|Edge(v0, v1)| {
-            if !verts.contains(v0) && tri.overlap(&v0.value) {
-                verts.push(*v0);
+        let mut edges = self.edges.clone();
+        for tri in triangles {
+            let tri_edges = [Edge(tri.verts[0], tri.verts[1]), Edge(tri.verts[1], tri.verts[2]), Edge(tri.verts[2], tri.verts[0])];
+            for edge in tri_edges {
+                if !edges.contains(&edge) {
+                    edges.push(edge);
+                }
             }
-            if !verts.contains(v1) && tri.overlap(&v0.value) {
-                verts.push(*v1);
-            }
-        });
-
-        // Only include segments that have both ends overlapping the triangle
-        let edges = self.0
-            .iter()
-            .filter(|Edge(v0, v1)|
-                tri.overlap(&v0.value) && tri.overlap(&v1.value)
-            )
-            .cloned()
-            .collect();
-        trace!("Segments after intersection with triangle: {:?}", edges);
-
-        SplitEdges(edges)
+        }
+        Self {
+            edges,
+            outer: self.outer.clone(),
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.edges.is_empty()
     }
     /// Collect all edges from both SplitEdges sets,
     /// renaming (allocate PrimitiveIdx::Local freshly) vertices produced from intersection
     /// such that we match segments.
+    ///   - Outer edges are updated to include only those that are present in one of the sets, but
+    ///   not both, hence producing boundaries even for unions of disjoint sets
     pub fn union(&self, other: &SplitEdges) -> SplitEdges {
-        let mut edges = self.0.clone();
+        trace!("Union of SplitEdges: {:?} and {:?}", self, other);
+        let mut edges = self.edges.clone();
+        let mut verts = Vertex::from_edges(&edges);
+        let mut outer = self.outer.clone();
         let mut local_idx = 0;
-        for edge in self.0.iter() {
+        for edge in self.edges.iter() {
             match edge.0.idx {
                 PrimitiveIdx::Local(idx) => {
                     if local_idx < idx {
@@ -237,7 +252,7 @@ impl SplitEdges {
                 _ => {}
             }
         }
-        for other_edge in &other.0 {
+        for (other_pos, other_edge) in other.edges.iter().enumerate() {
             let pos = edges.iter().position(|e| e == other_edge);
             if let Some(pos) = pos {
                 // Edge already exists, but check that the other vertices are not higher priority
@@ -272,40 +287,67 @@ impl SplitEdges {
                 if replace {
                     edges[pos] = Edge(v0, v1);
                 }
+                if let Some(outer_pos) = outer.iter().position(|&p| p == pos) {
+                    trace!("Removing edge {:?} from outer edges, as it is shared between both SplitEdges sets.", other_edge);
+                    outer.remove(outer_pos);
+                } else if !outer.contains(&pos) && other.outer.contains(&other_pos) {
+                    trace!("Adding edge {:?} to outer edges, as it is only present in one of the SplitEdges sets.", other_edge);
+                    outer.push(pos);
+                }
             } else {
                 // Rename PrimitiveIdx::Local, but preserve Global
                 let v0 = match other_edge.0.idx {
                     PrimitiveIdx::Local(_idx) => {
-                        local_idx += 1;
-                        Vertex{
-                            value: other_edge.0.value,
-                            idx: PrimitiveIdx::Local(local_idx),
-                            from: other_edge.0.from,
+                        if let Some(vert) = verts.iter().find(|&v| v == &other_edge.0) {
+                            trace!("Vertex {:?} already exists, reusing existing vertex instead of creating a new one.", vert);
+                            *vert
+                        } else {
+                            local_idx += 1;
+                            let new_vert = Vertex{
+                                value: other_edge.0.value,
+                                idx: PrimitiveIdx::Local(local_idx),
+                                from: other_edge.0.from,
+                            };
+                            verts.push(new_vert);
+                            new_vert
                         }
                     },
                     _ => {other_edge.0}
                 };
                 let v1 = match other_edge.1.idx {
                     PrimitiveIdx::Local(_idx) => {
-                        local_idx += 1;
-                        Vertex{
-                            value: other_edge.1.value,
-                            idx: PrimitiveIdx::Local(local_idx),
-                            from: other_edge.1.from,
+                        if let Some(vert) = verts.iter().find(|&v| v == &other_edge.1) {
+                            trace!("Vertex {:?} already exists, reusing existing vertex instead of creating a new one.", vert);
+                            *vert
+                        } else {
+                            local_idx += 1;
+                            let new_vert = Vertex{
+                                value: other_edge.1.value,
+                                idx: PrimitiveIdx::Local(local_idx),
+                                from: other_edge.1.from,
+                            };
+                            verts.push(new_vert);
+                            new_vert
                         }
                     },
                     _ => {other_edge.1}
                 };
+                outer.push(edges.len());
                 edges.push(Edge(v0, v1));
             }
             if !edges.contains(other_edge) {
             }
         }
-        SplitEdges(edges)
+        assert!(outer.len() <= edges.len(), "Outer edges cannot be more than total edges");
+        assert!(outer.len() >= 3, "Outer edges must be at least 3 to form a polygon");
+        SplitEdges{
+            edges,
+            outer
+        }
     }
 
     pub fn rename_vertices(&mut self, vertex_map: &std::collections::HashMap<IdxIntersection, PrimitiveIdx>) {
-        for edge in &mut self.0 {
+        for edge in &mut self.edges {
             match edge.0.from {
                 Some(idx_inter) => {
                     if let Some(&new_idx) = vertex_map.get(&idx_inter) {
@@ -337,7 +379,7 @@ impl From<Vec<IdxTriangle>> for SplitEdges {
                 }
             }
         }
-        SplitEdges(edges)
+        SplitEdges::new(edges)
     }
 }
 
@@ -355,7 +397,7 @@ impl From<SplitEdges> for Vec<IdxTriangle> {
 
 impl Collide<SplitEdges> for IdxTriangle {
     fn overlap(&self, other: &SplitEdges) -> bool {
-        let split_verts = Vertex::from_edges(&other.0);
+        let split_verts = Vertex::from_edges(&other.edges);
         let tri: Triangle = self.clone().into();
         for vert in split_verts {
             if tri.vertex_in(vert.value) {
@@ -363,7 +405,7 @@ impl Collide<SplitEdges> for IdxTriangle {
             }
         }
         other
-            .0
+            .edges
             .iter()
             .any(|edge| self.overlap(edge))
     }
