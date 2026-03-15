@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::{BTreeMap, HashMap}, ops::Deref, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
 
 use log::info;
 use nalgebra::{Point3, Unit, Vector3};
@@ -247,8 +247,44 @@ pub struct FaceIntersection {
 }
 
 impl FaceIntersection {
+    pub fn new(tri_u_idx: PrimitiveIdx, tri_v_idx: PrimitiveIdx, split_edges: SplitEdges) -> Self {
+        let min_tri_idx = tri_u_idx.min(tri_v_idx);
+        let max_tri_idx = tri_u_idx.max(tri_v_idx);
+        assert!(min_tri_idx != max_tri_idx,
+            "Intersection should be between two different triangles, but got the same triangle idx {:?}",
+            tri_u_idx);
+        Self { tri_u: min_tri_idx, tri_v: max_tri_idx, split_edges }
+    }
     pub fn rename_vertices(&mut self, idx_alloc_map: &HashMap<IdxIntersection, PrimitiveIdx>) {
         self.split_edges.rename_vertices(idx_alloc_map);
+    }
+}
+
+impl PartialEq for FaceIntersection {
+    fn eq(&self, other: &Self) -> bool {
+        self.tri_u == other.tri_u && self.tri_v == other.tri_v
+    }
+}
+impl Eq for FaceIntersection {}
+
+impl Ord for FaceIntersection {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.tri_u.cmp(&other.tri_u) {
+            std::cmp::Ordering::Equal => self.tri_v.cmp(&other.tri_v),
+            ord => ord,
+        }
+    }
+}
+
+impl PartialOrd for FaceIntersection {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Into<Vec<IdxTriangle>> for FaceIntersection {
+    fn into(self) -> Vec<IdxTriangle> {
+        self.split_edges.into()
     }
 }
 
@@ -317,11 +353,11 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
                         !new_intersection.edges.is_empty(),
                         "Intersection of overlapping triangles should not be empty"
                     );
-                    intersections.push(FaceIntersection {
-                        tri_u: *idx_tri_u,
-                        tri_v: *idx_tri_v,
-                        split_edges: new_intersection,
-                    });
+                    intersections.push(FaceIntersection::new(
+                        *idx_tri_u,
+                        *idx_tri_v,
+                        new_intersection,
+                    ));
                 }
             }
         }
@@ -350,7 +386,8 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
         };
 
         // Map from local vertex idx in intersection to new global vertex idx in new_mesh
-        let mut idx_alloc_map: HashMap<IdxIntersection, PrimitiveIdx> = HashMap::new();
+        let mut vert_idx_alloc_map: HashMap<IdxIntersection, PrimitiveIdx> = HashMap::new();
+        let mut norm_idx_alloc_map: HashMap<PrimitiveIdx, PrimitiveIdx> = HashMap::new();
 
         // Collect split edges derived from the target triangle
         for (idx_tri_u, tri_u) in tri_u_union.iter() {
@@ -371,15 +408,15 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
 
             for vert in local_verts {
                 assert!(vert.from.is_some(), "Local vertex must have intersection edges described");
-                if !idx_alloc_map.contains_key(&vert.from.unwrap()) {
+                if !vert_idx_alloc_map.contains_key(&vert.from.unwrap()) {
                     let new_idx = new_mesh.verts.allocate(vert.value);
                     debug_assert!(matches!(new_idx, PrimitiveIdx::Global(_)), "Vertices from edges should be allocated globally");
-                    idx_alloc_map.insert(vert.from.unwrap(), new_idx);
+                    vert_idx_alloc_map.insert(vert.from.unwrap(), new_idx);
                 }
             }
 
             // Rneame vertices idx, mapping to the allocated global idx
-            splits.rename_vertices(&idx_alloc_map);
+            splits.rename_vertices(&vert_idx_alloc_map);
 
             // Sanity check: All vertices in splits should now be allocated globally
             Vertex::from_edges(&splits.edges)
@@ -393,7 +430,23 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
                 new_mesh.push(vec![tri_u.clone()]);
             } else {
                 // Split the triangle with the splits, and push to the new mesh
-                let (new_tris_u, _splits) = tri_u.split(splits);
+                let (mut new_tris_u, _splits) = tri_u.split(splits);
+
+                // Rename norms in new_tris_u, mapping to the allocated global idx
+                // WARN: Normals are likely to be duplicates for curved surface, but they should only affect the exported format
+                for tri in new_tris_u.iter_mut() {
+                    if let Some(norms) = tri.norms {
+                        for norm in norms {
+                            if matches!(norm.idx, PrimitiveIdx::Local(_)) && !norm_idx_alloc_map.contains_key(&norm.idx) {
+                                let new_idx = new_mesh.norms.allocate(norm.value);
+                                debug_assert!(matches!(new_idx, PrimitiveIdx::Global(_)), "Normals from original triangle should be allocated globally");
+                                norm_idx_alloc_map.insert(norm.idx, new_idx);
+                            }
+                        }
+                    }
+                    tri.rename_norms(&norm_idx_alloc_map);
+                }
+
                 new_mesh.push(new_tris_u);
             }
         }
@@ -402,7 +455,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
             .iter()
             .map(|face_inter| {
                 let mut new_face_inter = face_inter.clone();
-                new_face_inter.rename_vertices(&idx_alloc_map);
+                new_face_inter.rename_vertices(&vert_idx_alloc_map);
                 new_face_inter
             })
             .collect();

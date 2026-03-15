@@ -1,8 +1,9 @@
 use core::f64;
+use std::collections::HashMap;
 
 use log::trace;
 use nalgebra::Point3;
-use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxIntersection, Polygon, PrimitiveIdx, Vertex}};
+use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxEdge, IdxIntersection, Polygon, PrimitiveIdx, Vertex}};
 
 #[derive(Debug)]
 pub struct Segment {
@@ -383,15 +384,65 @@ impl From<Vec<IdxTriangle>> for SplitEdges {
     }
 }
 
-impl From<&SplitEdges> for Vec<IdxTriangle> {
-    fn from(value: &SplitEdges) -> Self {
-        todo!()
-    }
-}
-
 impl From<SplitEdges> for Vec<IdxTriangle> {
-    fn from(value: SplitEdges) -> Self {
-        todo!()
+    fn from(split_edges: SplitEdges) -> Self {
+        let edges = &split_edges.edges;
+        if edges.is_empty() {
+            return Vec::new();
+        }
+        let mut idx = 0;
+        let mut edge_map: HashMap<IdxEdge, Edge> = HashMap::new();
+        for edge in edges.iter() {
+            edge_map.insert(edge.clone().into(), *edge);
+        }
+        let verts = Vertex::from_edges(&edges);
+        let mut triangles = Vec::new();
+        for i in 0..verts.len() {
+            for j in (i + 1)..verts.len() {
+                for k in (j + 1)..verts.len() {
+                    let v1 = verts[i];
+                    let v2 = verts[j];
+                    let v3 = verts[k];
+                    if edge_map.contains_key(&IdxEdge::new(v1.idx, v2.idx))
+                        && edge_map.contains_key(&IdxEdge::new(v2.idx, v3.idx))
+                        && edge_map.contains_key(&IdxEdge::new(v3.idx, v1.idx))
+                    {
+                        triangles.push(IdxTriangle::new(
+                            vec![v1, v2, v3],
+                            //self.norms.map(|n| vec![n[i], n[j], n[k]]),
+                            None,
+                            PrimitiveIdx::Local(idx),
+                        ));
+                        idx += 1;
+                    }
+                }
+            }
+        }
+        // Prune triangles that include vertices => The triangle is already described by other
+        // finner grained triangles
+        let mut i = 0;
+        while i < triangles.len() {
+            let tri = &triangles[i];
+            let mut clash = false;
+            for vert in verts.iter() {
+                if tri.tri().vertex_in(vert.value) {
+                    trace!(
+                        "Vertex {:?} is inside triangle {:?}, removing triangle.",
+                        vert,
+                        tri.verts.map(|v| *v.idx)
+                    );
+                    clash = true;
+                    break;
+                }
+            }
+            if clash {
+                triangles.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        // TODO: Check that all edges are used
+        triangles
     }
 }
 

@@ -45,18 +45,21 @@ fn main() -> Result<()> {
             info!("Mesh {} and {} intersection: {:?}", mesh_a.name, mesh_b.name, inter);
             let (new_mesh_a, inter) = mesh_a.split(inter);
             let (new_mesh_b, inter) = mesh_b.split(inter);
-            //if !inter.is_empty() {
-            //    let inter_mesh = Mesh {
-            //        name: format!("{}-{}", mesh_a.name, mesh_b.name),
-            //        idx: PrimitiveIdx::Global(idx),
-            //        polygons: inter.into(),
-            //        verts: mesh_a.verts.clone(),
-            //        norms: mesh_a.norms.clone(),
-            //        faces: mesh_a.faces.clone(),
-            //    };
-            //    resolved_meshes.push(inter_mesh);
-            //    idx += 1;
-            //}
+            if !inter.is_empty() {
+                let mut inter_mesh = Mesh {
+                    name: format!("{}-{}", mesh_a.name, mesh_b.name),
+                    idx: PrimitiveIdx::Global(idx),
+                    polygons: Vec::new(),
+                    verts: mesh_a.verts.clone(),
+                    norms: mesh_a.norms.clone(),
+                    faces: mesh_a.faces.clone(),
+                };
+                inter.into_iter().for_each(|tri_inter| {
+                    inter_mesh.push(tri_inter.into());
+                });
+                resolved_meshes.push(inter_mesh);
+                idx += 1;
+            }
             meshes[i] = new_mesh_a;
             meshes[j] = new_mesh_b;
         }

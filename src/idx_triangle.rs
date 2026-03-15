@@ -2,8 +2,10 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
 };
 
+use anyhow::{Result, anyhow};
+use assert_approx_eq::assert_approx_eq;
 use log::{debug, info, trace, warn};
-use nalgebra::{Unit, Vector3};
+use nalgebra::{Point3, Unit, Vector3};
 
 use crate::{
     Collide, Segment, Split, SplitEdges, Triangle,
@@ -17,6 +19,7 @@ pub struct IdxTriangle {
     pub idx: PrimitiveIdx,
     pub verts: [Vertex; 3],
     pub norms: Option<[Normal; 3]>,
+    pub flat: bool,
 }
 
 impl IdxTriangle {
@@ -26,16 +29,25 @@ impl IdxTriangle {
             verts.len() == 3,
             "Expected exactly 3 vertices to construct a triangle"
         );
+        let mut flat = true;
         if let Some(ref idx_norms) = norms {
             assert!(
                 idx_norms.len() == 3,
                 "Expected exactly 3 normals to construct a smooth triangle"
             );
+            let v0 = idx_norms[0].value.into_inner();
+            let v1 = idx_norms[1].value.into_inner();
+            let v2 = idx_norms[2].value.into_inner();
+
+            if (v1-v0).abs().sum() < 1e-10 && (v2-v0).abs().sum() < 1e-10 {
+                flat = true;
+            }
         }
         IdxTriangle {
             idx,
             verts: [verts[0], verts[1], verts[2]],
             norms: norms.map(|n| [n[0], n[1], n[2]]),
+            flat,
         }
     }
 
@@ -56,68 +68,111 @@ impl IdxTriangle {
         self.clone().into()
     }
 
+    /// Get barycentric_coords of a point in the triangle.
+    /// Derived from "Real-Time Collision Detection" - Chapter 3.4
+    fn barycentric_coords(&self, point: &Point3<f64>) -> Result<(f64, f64, f64)> {
+        const EPS: f64 = 1e-9;
+        let verts = self.verts;
+        let v0 = verts[1].value - verts[0].value;
+        let v1 = verts[2].value - verts[0].value;
+        let v2 = *point - verts[0].value;
+        let d00 = v0.dot(&v0);
+        let d01 = v0.dot(&v1);
+        let d11 = v1.dot(&v1);
+        let d20 = v2.dot(&v0);
+        let d21 = v2.dot(&v1);
+        let denom = (d00 * d11) - (d01 * d01);
+        if denom.abs() < f64::EPSILON {
+            // Degenerate triangle (colinear edges), can't calculate barycentric coordinates.
+            return Err(anyhow!(
+                "Trying to calculate barycentric coordinates for a degenerate triangle."
+            ));
+        }
+        let mut v = ((d11 * d20) - (d01 * d21)) / denom;
+        let mut w = ((d00 * d21) - (d01 * d20)) / denom;
+        let mut u = 1.0 - v - w;
+        if u < -EPS || u > 1.0 + EPS || v < -EPS || v > 1.0 + EPS || w < -EPS || w > 1.0 + EPS {
+            // Invalid barycentric coordinates, point outside the triangle
+            return Err(anyhow!("Trying to calculate barycentric coordinates ({},{},{}) for a point outside the triangle.", u,v,w));
+        }
+        // Clamp barycentric coordinates to [0,1] to handle numerical precision issues
+        u = u.max(0.0).min(1.0);
+        v = v.max(0.0).min(1.0);
+        w = w.max(0.0).min(1.0);
+        assert!(
+            (u + v + w - 1.0).abs() < EPS,
+            "Barycentric coordinates do not sum to 1: u={}, v={}, w={}", u, v, w
+        );
+        Ok((u, v, w))
+    }
+
+    fn dir_at(&self, bary_coords: (f64, f64, f64)) -> Result<Dir3> {
+        let idx_norms = self.norms.as_ref().expect("Expected normals for smooth triangle");
+        let norm_value: Vector3<f64> = idx_norms[0].value.as_ref() * bary_coords.0
+            + idx_norms[1].value.as_ref() * bary_coords.1
+            + idx_norms[2].value.as_ref() * bary_coords.2;
+        // FIXME: Perhaps only do this in debug mode for performance reasons
+        assert_approx_eq!(norm_value.norm(), 1.0);
+        Ok(Dir3::new_normalize(norm_value))
+    }
+
+
     pub fn from_edges(&self, edges: Vec<Edge>) -> Vec<IdxTriangle> {
         if edges.is_empty() {
             return Vec::new();
         }
-        let verts = Vertex::from_edges(&edges);
-        let mut idx = 0;
-        let mut edge_map: HashMap<IdxEdge, Edge> = HashMap::new();
-        for edge in edges.iter() {
-            edge_map.insert(edge.clone().into(), *edge);
-        }
-        let verts = Vertex::from_edges(&edges);
-        assert!(
-            self.verts.iter().all(|v| verts.contains(v)),
-            "All triangle vertices must be present in the edges"
-        );
-        let mut triangles = Vec::new();
-        for i in 0..verts.len() {
-            for j in (i + 1)..verts.len() {
-                for k in (j + 1)..verts.len() {
-                    let v1 = verts[i];
-                    let v2 = verts[j];
-                    let v3 = verts[k];
-                    if edge_map.contains_key(&IdxEdge::new(v1.idx, v2.idx))
-                        && edge_map.contains_key(&IdxEdge::new(v2.idx, v3.idx))
-                        && edge_map.contains_key(&IdxEdge::new(v3.idx, v1.idx))
-                    {
-                        triangles.push(IdxTriangle::new(
-                            vec![v1, v2, v3],
-                            None,
-                            PrimitiveIdx::Local(idx),
-                            //self.norms.map(|n| vec![n[i], n[j], n[k]]),
-                        ));
-                        idx += 1;
+
+        // Group edges to form triangles
+        let mut split_edges = SplitEdges::new(vec![]);
+        split_edges.edges.extend(edges);
+        let mut tris: Vec<IdxTriangle> = split_edges.into();
+
+        // Compute norms if they exist in the original triangle
+        if let Some(ref idx_norms) = self.norms {
+            if self.flat {
+                // If the original triangle is flat, we can directly assign the same normal to all new triangles without interpolation
+                for tri in tris.iter_mut() {
+                    tri.norms = Some([idx_norms[0], idx_norms[1], idx_norms[2]]);
+                }
+                return tris;
+            }
+
+            let mut norm_idx = 0;
+            let tris_norms: Vec<_> = tris.iter().map(|tri| {
+                // Norms for all vertices in triangle `tri`
+                let norms = tri.verts.map(|v| {
+                    if self.verts.contains(&v) {
+                        // If the vertex of the new triangle matches one of the original triangle vertices, we can directly use the corresponding normal without interpolation
+                        let vert_idx = self.verts.iter().position(|&orig_v| orig_v == v).unwrap();
+                        idx_norms[vert_idx]
+                    } else {
+                        // Populate norms based on barycentric coordinates interpolation
+                        let bc = self.barycentric_coords(&v.value).unwrap();
+                        let norm = Normal { value: self.dir_at(bc).unwrap(), idx: PrimitiveIdx::Local(norm_idx)};
+                        norm_idx += 1;
+                        norm
                     }
+                });
+                norms
+            }).collect();
+
+            // Assign norms to the triangles
+            for (tri, norms) in tris.iter_mut().zip(tris_norms){
+                tri.norms = Some(norms);
+            };
+        }
+
+        tris
+    }
+
+    pub fn rename_norms(&mut self, norm_idx_map: &HashMap<PrimitiveIdx, PrimitiveIdx>) {
+        if let Some(ref mut idx_norms) = self.norms {
+            for norm in idx_norms.iter_mut() {
+                if let Some(new_idx) = norm_idx_map.get(&norm.idx) {
+                    norm.idx = *new_idx;
                 }
             }
         }
-        // Prune triangles that include vertices => The triangle is already described by other
-        // finner grained triangles
-        let mut i = 0;
-        while i < triangles.len() {
-            let tri = &triangles[i];
-            let mut clash = false;
-            for vert in verts.iter() {
-                if tri.tri().vertex_in(vert.value) {
-                    trace!(
-                        "Vertex {:?} is inside triangle {:?}, removing triangle.",
-                        vert,
-                        tri.verts.map(|v| *v.idx)
-                    );
-                    clash = true;
-                    break;
-                }
-            }
-            if clash {
-                triangles.remove(i);
-            } else {
-                i += 1;
-            }
-        }
-        // TODO: Check that all edges are used
-        triangles
     }
 }
 
