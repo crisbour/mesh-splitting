@@ -10,7 +10,8 @@ colored = "3.1.1"
 env_logger = "0.11.9"
 log = "0.4.29"
 nalgebra = "0.34.1"
-obj = "0.10.2"
+#obj = "0.10.2"
+obj = { git = "https://github.com/kvark/obj", branch = "master" }
 
 [dev.dependencies]
 assert_approx_eq = "1.1.0"
