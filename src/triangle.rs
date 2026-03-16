@@ -4,7 +4,7 @@ use nalgebra::{Point3, Vector3, Unit};
 use crate::{Aabb, Collide,Segment};
 type Dir3 = Unit<Vector3<f64>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Triangle {
     pub verts: [Point3<f64>; 3],
     pub plane_norm: Dir3,
@@ -304,5 +304,79 @@ impl Collide<Aabb> for Triangle {
         }
 
         true
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    // We implement the transformable for the triangle primitive, so we shall use this for tests.
+    use super::*;
+
+    #[test]
+    fn test_vertex_in() {
+        let tri = Triangle::new([
+            Point3::new(0., 0., 0.),
+            Point3::new(1., 0., 0.),
+            Point3::new(1., 1., 0.),
+        ]);
+
+        assert_eq!(tri.vertex_in(Point3::new(-1e-10, 0.0, 0.0)), false);
+        assert_eq!(tri.vertex_in(Point3::new(0.0, 0.0, 0.0)), false);
+        assert_eq!(tri.vertex_in(Point3::new(1.0, 0.0, 0.0)), false);
+        assert_eq!(tri.vertex_in(Point3::new(1.0, 1.0, 0.0)), false);
+        assert_eq!(tri.vertex_in(Point3::new(0.5, 0.0, 0.0)), false);
+        assert_eq!(tri.vertex_in(Point3::new(0.5, 0.5, 0.0)), false);
+        assert_eq!(tri.vertex_in(Point3::new(0.0, 0.0, 1e-10)), false);
+        assert_eq!(tri.vertex_in(Point3::new(0.5, 0.3, 0.0)), true);
+    }
+
+    #[test]
+    fn test_overlaping_triangles() {
+        let tri1 = Triangle::new([
+            Point3::new(0., 0., 0.),
+            Point3::new(1., 0., 0.),
+            Point3::new(1., 1., 0.),
+        ]);
+        let tri2 = Triangle::new([
+            Point3::new(0., 1., 0.),
+            Point3::new(1., 0., 0.),
+            Point3::new(1., 1., 0.),
+        ]);
+
+        assert!(tri1.overlap(&tri2));
+    }
+
+    #[test]
+    fn test_non_overlaping_triangles() {
+        let tri1 = Triangle::new([
+            Point3::new(0., 0., 0.),
+            Point3::new(1., 0., 0.),
+            Point3::new(1., 1., 0.),
+        ]);
+
+        // Not coplanar
+        let tri2 = Triangle::new([
+            Point3::new(0., 1., 1.),
+            Point3::new(1., 0., 1.),
+            Point3::new(1., 1., 1.),
+        ]);
+        assert!(!tri1.overlap(&tri2));
+
+        // Coplanar but not overlapping
+        let tri2 = Triangle::new([
+            Point3::new(0., 0.1, 0.),
+            Point3::new(0., 1., 0.),
+            Point3::new(0.9, 1., 0.),
+        ]);
+        assert!(!tri1.overlap(&tri2));
+
+        // Intersecting, but not overlapping in the same plane
+        let tri2 = Triangle::new([
+            Point3::new(0., 0., -1.),
+            Point3::new(1., 0., 1.),
+            Point3::new(1., 1., 1.),
+        ]);
+        assert!(!tri1.overlap(&tri2));
     }
 }
