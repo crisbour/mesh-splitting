@@ -49,6 +49,9 @@ impl IdxEdge {
         // Instead of (self.0 == other.0 && self.1 == other.1) || (self.0 == other.1 && self.1 == other.0), check:
         self.0 == other.0 && self.1 == other.1
     }
+    pub fn unwrap(self) -> (PrimitiveIdx, PrimitiveIdx) {
+        (self.0, self.1)
+    }
 }
 
 impl From<Edge> for IdxEdge {

@@ -162,6 +162,12 @@ impl Segment {
     }
 }
 
+impl From<Edge> for Segment {
+    fn from(edge: Edge) -> Self {
+        Segment::new(edge.0.value, edge.1.value)
+    }
+}
+
 impl Collide<Point3<f64>> for Segment {
     // FIXME: Perhaps increase EPS to allow for some numerical precision issues
     #[inline]
@@ -392,10 +398,18 @@ impl TryFrom<SplitEdges> for Vec<IdxTriangle> {
         if edges.is_empty() {
             return Ok(Vec::new());
         }
+        trace!("Form triangles from: {:?}",
+            edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .collect::<Vec<_>>()
+        );
         let mut idx = 0;
-        let mut edge_set: HashSet<IdxEdge> = HashSet::new();
+        // NOTE: Unwrap IdxEdge to circumvent the property that Eq can't check for PrimitiveIdx::Local
+        let mut edge_set: HashSet<(PrimitiveIdx, PrimitiveIdx)> = HashSet::new();
         for edge in edges.iter() {
-            edge_set.insert(edge.clone().into());
+            let idx_edge: IdxEdge = edge.clone().into();
+            edge_set.insert(idx_edge.unwrap());
         }
         let verts = Vertex::from_edges(&edges);
         let mut triangles = Vec::new();
@@ -405,9 +419,10 @@ impl TryFrom<SplitEdges> for Vec<IdxTriangle> {
                     let v1 = verts[i];
                     let v2 = verts[j];
                     let v3 = verts[k];
-                    if edge_set.contains(&IdxEdge::new(v1.idx, v2.idx)?)
-                        && edge_set.contains(&IdxEdge::new(v2.idx, v3.idx)?)
-                        && edge_set.contains(&IdxEdge::new(v3.idx, v1.idx)?)
+                    let e1 = IdxEdge::new(v1.idx, v2.idx)?;
+                    let e2 = IdxEdge::new(v2.idx, v3.idx)?;
+                    let e3 = IdxEdge::new(v3.idx, v1.idx)?;
+                    if edge_set.contains(&e1.unwrap()) && edge_set.contains(&e2.unwrap()) && edge_set.contains(&e3.unwrap())
                     {
                         triangles.push(IdxTriangle::new(
                             vec![v1, v2, v3],

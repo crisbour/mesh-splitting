@@ -1,10 +1,11 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
+    fmt::Display,
 };
 
 use anyhow::{Context, Result, anyhow};
 use assert_approx_eq::assert_approx_eq;
-use log::{debug, info, trace, warn};
+use log::{info, trace, warn};
 use nalgebra::{Point3, Unit, Vector3};
 
 use crate::{
@@ -20,6 +21,22 @@ pub struct IdxTriangle {
     pub verts: [Vertex; 3],
     pub norms: Option<[Normal; 3]>,
     pub flat: bool,
+}
+
+impl Display for IdxTriangle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "IdxTriangle {{ idx: {:?}, verts: [{}:{}, {}:{}, {}:{}] }}",
+            self.idx,
+            *self.verts[0].idx,
+            self.verts[0].value,
+            *self.verts[1].idx,
+            self.verts[1].value,
+            *self.verts[2].idx,
+            self.verts[2].value,
+        )
+    }
 }
 
 impl IdxTriangle {
@@ -59,8 +76,8 @@ impl IdxTriangle {
         self
     }
 
-    pub fn edges(&self) -> Vec<Edge> {
-        vec![
+    pub fn edges(&self) -> [Edge; 3] {
+        [
             Edge::new(self.verts[0].clone(), self.verts[1].clone()),
             Edge::new(self.verts[1].clone(), self.verts[2].clone()),
             Edge::new(self.verts[2].clone(), self.verts[0].clone()),
@@ -96,7 +113,12 @@ impl IdxTriangle {
         let mut u = 1.0 - v - w;
         if u < -EPS || u > 1.0 + EPS || v < -EPS || v > 1.0 + EPS || w < -EPS || w > 1.0 + EPS {
             // Invalid barycentric coordinates, point outside the triangle
-            return Err(anyhow!("Trying to calculate barycentric coordinates ({},{},{}) for a point outside the triangle.", u,v,w));
+            return Err(anyhow!(
+                "Trying to calculate barycentric coordinates ({},{},{}) for a point outside the triangle.",
+                u,
+                v,
+                w
+            ));
         }
         // Clamp barycentric coordinates to [0,1] to handle numerical precision issues
         u = u.max(0.0).min(1.0);
@@ -104,13 +126,19 @@ impl IdxTriangle {
         w = w.max(0.0).min(1.0);
         assert!(
             (u + v + w - 1.0).abs() < EPS,
-            "Barycentric coordinates do not sum to 1: u={}, v={}, w={}", u, v, w
+            "Barycentric coordinates do not sum to 1: u={}, v={}, w={}",
+            u,
+            v,
+            w
         );
         Ok((u, v, w))
     }
 
     fn dir_at(&self, bary_coords: (f64, f64, f64)) -> Result<Dir3> {
-        let idx_norms = self.norms.as_ref().expect("Expected normals for smooth triangle");
+        let idx_norms = self
+            .norms
+            .as_ref()
+            .expect("Expected normals for smooth triangle");
         let norm_value: Vector3<f64> = idx_norms[0].value.as_ref() * bary_coords.0
             + idx_norms[1].value.as_ref() * bary_coords.1
             + idx_norms[2].value.as_ref() * bary_coords.2;
@@ -118,7 +146,6 @@ impl IdxTriangle {
         assert_approx_eq!(norm_value.norm(), 1.0);
         Ok(Dir3::new_normalize(norm_value))
     }
-
 
     pub fn from_edges(&self, edges: Vec<Edge>) -> Result<Vec<IdxTriangle>> {
         if edges.is_empty() {
@@ -141,28 +168,35 @@ impl IdxTriangle {
             }
 
             let mut norm_idx = 0;
-            let tris_norms: Vec<_> = tris.iter().map(|tri| {
-                // Norms for all vertices in triangle `tri`
-                let norms = tri.verts.map(|v| {
-                    if self.verts.contains(&v) {
-                        // If the vertex of the new triangle matches one of the original triangle vertices, we can directly use the corresponding normal without interpolation
-                        let vert_idx = self.verts.iter().position(|&orig_v| orig_v == v).unwrap();
-                        idx_norms[vert_idx]
-                    } else {
-                        // Populate norms based on barycentric coordinates interpolation
-                        let bc = self.barycentric_coords(&v.value).unwrap();
-                        let norm = Normal { value: self.dir_at(bc).unwrap(), idx: PrimitiveIdx::Local(norm_idx)};
-                        norm_idx += 1;
-                        norm
-                    }
-                });
-                norms
-            }).collect();
+            let tris_norms: Vec<_> = tris
+                .iter()
+                .map(|tri| {
+                    // Norms for all vertices in triangle `tri`
+                    let norms = tri.verts.map(|v| {
+                        if self.verts.contains(&v) {
+                            // If the vertex of the new triangle matches one of the original triangle vertices, we can directly use the corresponding normal without interpolation
+                            let vert_idx =
+                                self.verts.iter().position(|&orig_v| orig_v == v).unwrap();
+                            idx_norms[vert_idx]
+                        } else {
+                            // Populate norms based on barycentric coordinates interpolation
+                            let bc = self.barycentric_coords(&v.value).unwrap();
+                            let norm = Normal {
+                                value: self.dir_at(bc).unwrap(),
+                                idx: PrimitiveIdx::Local(norm_idx),
+                            };
+                            norm_idx += 1;
+                            norm
+                        }
+                    });
+                    norms
+                })
+                .collect();
 
             // Assign norms to the triangles
-            for (tri, norms) in tris.iter_mut().zip(tris_norms){
+            for (tri, norms) in tris.iter_mut().zip(tris_norms) {
                 tri.norms = Some(norms);
-            };
+            }
         }
 
         Ok(tris)
@@ -209,14 +243,17 @@ impl TryFrom<Vec<Edge>> for Polygon {
         let mut next_vertex = edges[0].1;
 
         let mut visited: BTreeSet<IdxEdge> = BTreeSet::new();
-        visited.insert(IdxEdge::new(edges[0].0.idx, edges[0].1.idx).context("Mark first edge used")?);
+        visited
+            .insert(IdxEdge::new(edges[0].0.idx, edges[0].1.idx).context("Mark first edge used")?);
 
         while next_vertex != end_vertex {
             verts.push(next_vertex);
             let mut found = false;
             for edge in edges.iter() {
-                let idx_edge = IdxEdge::new(edge.0.idx, edge.1.idx).context(format!("Check next edge to be used: {:?}", edge))?;
-                if !visited.contains(&idx_edge) && (edge.0 == next_vertex || edge.1 == next_vertex) {
+                let idx_edge = IdxEdge::new(edge.0.idx, edge.1.idx)
+                    .context(format!("Check next edge to be used: {:?}", edge))?;
+                if !visited.contains(&idx_edge) && (edge.0 == next_vertex || edge.1 == next_vertex)
+                {
                     found = true;
                     visited.insert(idx_edge);
                     if edge.0 == next_vertex {
@@ -239,7 +276,10 @@ impl TryFrom<Vec<Edge>> for Polygon {
                     "Not all edges have been used in constructing the polygon.\nPolygon: {:?}\nEdge unused {:?}\nFrom edges: {:?}",
                     verts.iter().map(|v| v.idx).collect::<Vec<_>>(),
                     idx_edge,
-                    edges.iter().map(|e| e.clone().into()).collect::<Vec<IdxEdge>>()
+                    edges
+                        .iter()
+                        .map(|e| e.clone().into())
+                        .collect::<Vec<IdxEdge>>()
                 ));
             }
         }
@@ -260,9 +300,15 @@ impl TryFrom<Polygon> for IdxTriangle {
     type Error = anyhow::Error;
     fn try_from(poly: Polygon) -> Result<Self> {
         if poly.verts.len() == 3 {
-            Err(anyhow!("Expected exactly 3 vertices to construct a triangle"))
+            Err(anyhow!(
+                "Expected exactly 3 vertices to construct a triangle"
+            ))
         } else {
-            Ok(IdxTriangle::new(poly.verts, None, PrimitiveIdx::Local(usize::MAX)))
+            Ok(IdxTriangle::new(
+                poly.verts,
+                None,
+                PrimitiveIdx::Local(usize::MAX),
+            ))
         }
     }
 }
@@ -319,7 +365,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
     type Inst = Vec<Self>;
 
     fn intersect(&self, other: &IdxTriangle) -> SplitEdges {
-        trace!("Check intersections of {:?} with {:?}", self, other);
+        trace!("Check intersections of {} with {}", self, other);
 
         let mut local_verts: Vec<Vertex> = vec![];
         let mut local_verts_valid: Vec<bool> = vec![];
@@ -339,15 +385,23 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
             }
         }
 
+        trace!("Verts in: {:?}, Verts out: {:?}", verts_in, verts_out);
+
         // Add segments between vertices inside the triangle, as they will be part of the new triangles
         for i in 0..verts_in.len() {
             for j in (i + 1)..verts_in.len() {
                 new_edges.push(Edge::new(verts_in[i], verts_in[j]));
             }
         }
-        trace!("Edges between vertices inside the triangle: {:?}", new_edges.iter().map(|e| Into::<IdxEdge>::into(e.clone())).map(|IdxEdge(v0,v1)| (*v0, *v1)).collect::<Vec<_>>());
+        trace!(
+            "Edges between vertices inside the triangle: {:?}",
+            new_edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .map(|IdxEdge(v0, v1)| (*v0, *v1))
+                .collect::<Vec<_>>()
+        );
 
-        trace!("Verts in: {:?}, Verts out: {:?}", verts_in, verts_out);
         // Get all segments that might intersect the triangle
         match verts_in.len() {
             3 => {
@@ -374,7 +428,17 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
             _ => unreachable!(),
         }
 
-        trace!("Segments to check intersections: {:?}", edges_v);
+        trace!(
+            "Segments to check intersections: {:?}",
+            edges_v
+                .iter()
+                .map(|(sv, e)| format!(
+                    "(Vert: {:?}, Edge: {:?}), ",
+                    sv.map(|v| v.idx),
+                    Into::<IdxEdge>::into(e.clone())
+                ))
+                .collect::<String>()
+        );
 
         // Find all intersections and segments that need to be included in the new triangles
         #[derive(Debug, Clone)]
@@ -475,19 +539,14 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
                 .filter(|inter| vertex_v.is_some() || !inter.fuzzy || inters_count == 2)
                 .collect();
 
-            edge_v_inters_validated
-                .iter()
-                .for_each(|inter| match inter.value.idx {
-                    PrimitiveIdx::Global(idx) => {
-                        trace!("Intersection at global vertex index {}", idx);
-                    }
-                    PrimitiveIdx::Local(idx) => {
-                        trace!("Intersection at local vertex index {}", idx);
-                        local_verts_valid[idx] = true;
-                    }
-                });
+            edge_v_inters_validated.iter().for_each(|inter| {
+                trace!("Intersection at {:?}", inter.value.idx);
+                if let PrimitiveIdx::Local(idx) = inter.value.idx {
+                    local_verts_valid[idx] = true;
+                }
+            });
 
-            trace!("Intersections: {:?}", edge_v_inters_validated);
+            trace!("Validated Intersections: {:?}", edge_v_inters_validated);
 
             trace!(
                 "Vertices {:?} with validity {:?}",
@@ -511,7 +570,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
                     ));
                 } else {
                     if edge_v_inters_validated.len() == 1 {
-                        debug!("WARN: Outer intersection with eps error must be checked");
+                        warn!("Outer intersection with eps error must be checked");
                     }
                 }
             }
@@ -531,7 +590,13 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
         }
         trace!("Intersections: {:?}", inters);
 
-        trace!("New segments after intersection: {:?}", new_edges);
+        trace!(
+            "New segments after intersection: {:?}",
+            new_edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .collect::<Vec<_>>()
+        );
 
         // Solving colinear vertices and generate segs that don't overlap each other
         // -------------------------------------------------------------------------
@@ -596,20 +661,40 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
             }
         }
 
-        trace!("New segments after handling colinearity: {:?}", new_edges.iter().map(|e| Into::<IdxEdge>::into(e.clone())).collect::<Vec<_>>());
+        trace!(
+            "New segments after handling colinearity: {:?}",
+            new_edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .collect::<Vec<_>>()
+        );
         trace!("Colinear vertices: {:?}", colinear_blacklist);
 
         let split_convex_polygon = SplitEdges::new(other.intersect(&new_edges));
 
-        info!("Intersection edges: {:?}", split_convex_polygon.edges.iter().map(|e| Into::<IdxEdge>::into(e.clone())).collect::<Vec<_>>());
+        info!(
+            "Intersection edges: {:?}",
+            split_convex_polygon
+                .edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .collect::<Vec<_>>()
+        );
 
         split_convex_polygon.triangulate()
     }
 
     #[inline]
     fn split(&self, other: SplitEdges) -> (Self::Inst, SplitEdges) {
-        trace!("Splitting {:?} with: {:?}", self, other);
         let mut split_edges = other.edges.clone();
+        trace!(
+            "Splitting {:?} with: {:?}",
+            self,
+            split_edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .collect::<Vec<_>>()
+        );
         let mut diff_edges = Vec::new();
 
         // Solving colinear vertices and generate segs that don't overlap each other
@@ -673,20 +758,31 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
                 }
             }
         }
+        trace!(
+            "Split edges after handling colinearity: {:?}",
+            diff_edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .collect::<Vec<_>>()
+        );
 
         trace!("Colinear vertices: {:?}", colinear_blacklist);
 
         // By now split_edges must contain all vertices in some edges from inter_edges and newly
         // constructed edges
-        let verts = Vertex::from_edges(&split_edges);
+        let verts = Vertex::from_edges(&diff_edges);
+        let inter_verts = Vertex::from_edges(&other.outer_edges());
 
         // The `new_edges` already form the intersection convex polygon
         for vert in verts.iter() {
-            for other_vert in verts.iter() {
+            for other_vert in inter_verts.iter() {
                 if vert == other_vert {
                     continue;
                 }
-                if colinear_blacklist.get(&vert.idx).map_or(false, |set| set.contains(&other_vert.idx)) {
+                if colinear_blacklist
+                    .get(&vert.idx)
+                    .map_or(false, |set| set.contains(&other_vert.idx))
+                {
                     continue;
                 }
                 if split_edges.contains(&Edge::new(*vert, *other_vert)) {
@@ -711,14 +807,39 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
             }
         }
 
+        trace!(
+            "Split edges after connecting non-intersecting: {:?}",
+            diff_edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .collect::<Vec<_>>()
+        );
+
         // Include boundary edges from intersection edges
         let diff_verts = Vertex::from_edges(&diff_edges);
         for edge in other.outer_edges().iter() {
             if diff_verts.contains(&edge.0) && diff_verts.contains(&edge.1) {
-                if colinear_blacklist.get(&edge.0.idx).map_or(false, |set| set.contains(&edge.1.idx)) {
-                    // Skip edges that are blacklisted
+                trace!("Trying to include edge {:?} from intersection perimeter", Into::<IdxEdge>::into(edge.clone()));
+
+                // Skip edge that is on the triangle perimeter
+                let mut skip = false;
+                for tri_edge in self.edges().iter() {
+                    if let Some(IdxIntersection(from_edge_0_a, from_edge_0_b)) = edge.0.from &&
+                       let Some(IdxIntersection(from_edge_1_a, from_edge_1_b)) = edge.1.from {
+                        let idx_tri_edge = IdxEdge::from(*tri_edge);
+                        if (from_edge_0_a == idx_tri_edge || from_edge_0_b == idx_tri_edge) &&
+                           (from_edge_1_a == idx_tri_edge || from_edge_1_b == idx_tri_edge) {
+                            skip = true;
+                            trace!("Skip edge {:?} is part of the triangle perimeter and we avoid including the intersection", Into::<IdxEdge>::into(edge.clone()));
+                        }
+                    }
+                }
+                if skip {
                     continue;
                 }
+
+                trace!("Include edge {:?} from intersection perimeter", Into::<IdxEdge>::into(edge.clone()));
+
                 if !diff_edges.contains(edge) {
                     split_edges.push(*edge);
                     diff_edges.push(*edge);
@@ -730,10 +851,26 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
             }
         }
 
-        let tris_diff_vec = self.from_edges(diff_edges.clone())
-            .expect(&format!("Construct triangles from the diff edges {:?}", diff_edges));
+        trace!(
+            "Split edges to form triangles: {:?}",
+            diff_edges
+                .iter()
+                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .collect::<Vec<_>>()
+        );
 
-        info!("Split triangles: {:?}", tris_diff_vec.iter().map(|tri| tri.verts.map(|v| *v.idx)).collect::<Vec<_>>());
+        let tris_diff_vec = self.from_edges(diff_edges.clone()).expect(&format!(
+            "Construct triangles from the diff edges {:?}",
+            diff_edges
+        ));
+
+        info!(
+            "Split triangles: {:?}",
+            tris_diff_vec
+                .iter()
+                .map(|tri| tri.verts.map(|v| *v.idx))
+                .collect::<Vec<_>>()
+        );
 
         (tris_diff_vec, other)
     }
@@ -767,9 +904,7 @@ impl Split<Vec<Edge>, Vec<Edge>> for IdxTriangle {
         // Only include segments that have both ends overlapping the triangle
         let edges = edges
             .iter()
-            .filter(|Edge(v0, v1)|
-                tri.overlap(&v0.value) && tri.overlap(&v1.value)
-            )
+            .filter(|Edge(v0, v1)| tri.overlap(&v0.value) && tri.overlap(&v1.value))
             .cloned()
             .collect();
         trace!("Segments after intersection with triangle: {:?}", edges);
