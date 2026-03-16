@@ -19,7 +19,7 @@ fn main() -> Result<()> {
 
     let obj = Obj::load("./test/Remesh.obj")?;
 
-    println!("{:?}", obj);
+    //println!("{:?}", obj);
 
     let (mut meshes, verts, norms, faces) = parse_obj(obj);
     //let (meshes, ..) = parse_obj(obj);
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     println!("Faces: {}", faces.borrow().len());
     for mesh in &meshes {
         println!(" > Mesh: {}", mesh.name.green());
-        println!("Mesh: {:?}", mesh.polygons);
+        //println!("Mesh: {:?}", mesh.polygons);
     }
 
     info!("Start splitting meshes");
@@ -54,9 +54,9 @@ fn main() -> Result<()> {
                     norms: mesh_a.norms.clone(),
                     faces: mesh_a.faces.clone(),
                 };
-                inter.into_iter().for_each(|tri_inter| {
-                    inter_mesh.push(tri_inter.into());
-                });
+                for tri_inter in inter.into_iter() {
+                    inter_mesh.push(tri_inter.try_into()?);
+                };
                 resolved_meshes.push(inter_mesh);
                 idx += 1;
             }

@@ -1,5 +1,6 @@
 use std::{hash::Hash, ops::Deref};
 
+use anyhow::{Result, anyhow};
 use nalgebra::{Point3, Unit, Vector3};
 
 use crate::IdxTriangle;
@@ -18,6 +19,10 @@ impl PartialEq for Edge {
 impl Eq for Edge {}
 
 impl Edge {
+    pub fn new(v1: Vertex, v2: Vertex) -> Self {
+        assert!(v1.idx != v2.idx, "Edge cannot have ends with the same vertex index: {:?}", v1.idx);
+        Edge(v1, v2)
+    }
     pub fn from_idx(idx_edge: IdxEdge, verts: &Vec<Point3<f64>>) -> Self {
         Edge(
             Vertex::new(*idx_edge.0, verts),
@@ -30,19 +35,25 @@ impl Edge {
 pub struct IdxEdge(pub PrimitiveIdx, pub PrimitiveIdx);
 
 impl IdxEdge {
-    pub fn new(idx1: PrimitiveIdx, idx2: PrimitiveIdx) -> Self {
+    pub fn new(idx1: PrimitiveIdx, idx2: PrimitiveIdx) -> Result<Self> {
         let min_idx = idx1.min(idx2);
         let max_idx = idx1.max(idx2);
-        //if min_idx == max_idx {
-        //    panic!("Edge cannot have the same vertex index: {:?}", min_idx);
-        //}
-        IdxEdge(min_idx, max_idx)
+        if min_idx == max_idx {
+            return Err(anyhow!("Edge cannot have ends with the same vertex index: {:?}", min_idx));
+        }
+        Ok(IdxEdge(min_idx, max_idx))
+    }
+    pub fn eq_unchecked(&self, other: &Self) -> bool {
+        // NOTE: Due to the construction order of IdxEdge in IdxEdge::new(..),
+        // (V0,V1) will only be encoded as (V0, V1), not (V1, V0)
+        // Instead of (self.0 == other.0 && self.1 == other.1) || (self.0 == other.1 && self.1 == other.0), check:
+        self.0 == other.0 && self.1 == other.1
     }
 }
 
 impl From<Edge> for IdxEdge {
     fn from(edge: Edge) -> Self {
-        IdxEdge::new(edge.0.idx, edge.1.idx)
+        IdxEdge::new(edge.0.idx, edge.1.idx).expect("Failed to create IdxEdge from Edge")
     }
 }
 
@@ -62,13 +73,25 @@ impl PartialEq for IdxEdge {
             );
         }
 
-        // NOTE: Due to the construction order of IdxEdge in IdxEdge::new(..),
-        // (V0,V1) will only be encoded as (V0, V1), not (V1, V0)
-        // Instead of (self.0 == other.0 && self.1 == other.1) || (self.0 == other.1 && self.1 == other.0), check:
-        self.0 == other.0 && self.1 == other.1
+        self.eq_unchecked(other)
     }
 }
 impl Eq for IdxEdge {}
+
+impl Ord for IdxEdge {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.0.cmp(&other.0) {
+            std::cmp::Ordering::Less    => std::cmp::Ordering::Less,
+            std::cmp::Ordering::Greater => std::cmp::Ordering::Greater,
+            std::cmp::Ordering::Equal   => self.1.cmp(&other.1),
+        }
+    }
+}
+impl PartialOrd for IdxEdge {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 #[derive(Debug, Clone, Copy, Hash)]
 pub struct IdxIntersection(pub IdxEdge, pub IdxEdge);
@@ -169,9 +192,8 @@ pub struct Vertex {
     pub value: Point3<f64>,
     pub idx: PrimitiveIdx,
     // If vertex is produced from the intersection of two edges, register them here
-    // NOTE: PrimitiveIdx::Local <=> from (IdxEdge, IdxEdge)
-    // => Should perhaps encapsulate this information inside the PrimitiveIdx instead to have the
-    // data hermetic and resolved by the compiler, instead of matching patterns
+    // NOTE: PrimitiveIdx::Local <-> from (IdxEdge, IdxEdge)
+    // => Would be nice to have this encapsulated in the enum
     pub from: Option<IdxIntersection>,
 }
 
@@ -181,24 +203,16 @@ impl Hash for Vertex {
     }
 }
 
-// NOTE: Assume the vertex indexing is allocated properly such that
+// NOTE: Don't assume the vertex indexing is allocated properly such that
 // no 2 distinct vertices will have the same idx
-// WARN: That doesn't seem to be the case in the Wavefront file =>
-// Must run collision detection and avoid allocating distinct PrimitiveIdx for the same vertex
-// position. Not so critical for the norms
 // WARN: When reallocating indexing, need to have clear barier in the code where the old and new
 // local indexing is used => Assume any matching between PrimitiveIdx::Local can't be done
-// reliably, hence the intersection is checked instead since `Local index |-> Intersection`
+// reliably, hence the intersection is checked instead, since `Local index |-> Intersection`
 impl PartialEq for Vertex {
     fn eq(&self, other: &Self) -> bool {
         if self.idx == other.idx {
             true
         }
-        //else if matches!(self.idx, PrimitiveIdx::Global(_)) || matches!(other.idx, PrimitiveIdx::Global(_)) {
-        //    // If indexing didn't match, but one of the indexes are resolved globally, we don't
-        //    // proceed checking intersections
-        //    false
-        //}
         else if let Some(idx_inter_a) = self.from
             && let Some(idx_inter_b) = other.from
         {
@@ -264,7 +278,7 @@ impl Polygon {
         for i in 0..self.verts.len() {
             let v1 = self.verts[i].clone();
             let v2 = self.verts[(i + 1) % self.verts.len()].clone();
-            edges.push(Edge(v1, v2));
+            edges.push(Edge::new(v1, v2));
         }
         edges
     }
@@ -302,13 +316,13 @@ mod tests {
             idx: PrimitiveIdx::Global(1),
             from: None,
         };
-        let edge1 = Edge(v1, v2);
-        let edge2 = Edge(v2, v1);
+        let edge1 = Edge::new(v1, v2);
+        let edge2 = Edge::new(v2, v1);
         assert_eq!(edge1, edge2);
     }
 
     #[test]
-    fn test_vertex_equality() {
+    fn test_vertex_equality() -> Result<()> {
         // Identity based on index
         let v1 = Vertex {
             value: Point3::new(0.0, 0.0, 0.0),
@@ -353,8 +367,8 @@ mod tests {
             value: Point3::new(0.0, 0.0, 0.0),
             idx: PrimitiveIdx::Local(0),
             from: Some(IdxIntersection::new(
-                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11)),
-                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21)),
+                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11))?,
+                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21))?,
             )),
         };
         // Check based on intersection
@@ -362,8 +376,8 @@ mod tests {
             value: Point3::new(1.0, 0.0, 0.0),
             idx: PrimitiveIdx::Local(1),
             from: Some(IdxIntersection::new(
-                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11)),
-                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21)),
+                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11))?,
+                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21))?,
             )),
         };
         assert_eq!(v1, v2);
@@ -373,8 +387,8 @@ mod tests {
             value: Point3::new(0.0, 0.0, 0.0),
             idx: PrimitiveIdx::Local(0),
             from: Some(IdxIntersection::new(
-                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11)),
-                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21)),
+                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11))?,
+                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21))?,
             )),
         };
         // Check based on intersection
@@ -382,23 +396,24 @@ mod tests {
             value: Point3::new(1.0, 0.0, 0.0),
             idx: PrimitiveIdx::Local(1),
             from: Some(IdxIntersection::new(
-                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11)),
-                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(22)),
+                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11))?,
+                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(22))?,
             )),
         };
         assert_ne!(v1, v2);
+        Ok(())
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Cannot compare edges with local indexing, as the local indexing might not be consistent. Edge A: IdxEdge(Global(10), Global(11)), Edge B: IdxEdge(Local(10), Global(11)")]
     fn test_vertex_local_intersection_invalid() {
         // Not equal vertices
         let v1 = Vertex {
             value: Point3::new(0.0, 0.0, 0.0),
             idx: PrimitiveIdx::Local(0),
             from: Some(IdxIntersection::new(
-                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11)),
-                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21)),
+                IdxEdge::new(PrimitiveIdx::Global(10), PrimitiveIdx::Global(11)).expect("Failed to create IdxEdge for (u1,u2)"),
+                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21)).expect("Failed to create IdxEdge for (v1,v2)"),
             )),
         };
         // Check based on intersection
@@ -407,8 +422,8 @@ mod tests {
             idx: PrimitiveIdx::Local(1),
             from: Some(IdxIntersection::new(
                 // NOTE: Intersection from locally resolved edge not permited
-                IdxEdge::new(PrimitiveIdx::Local(10), PrimitiveIdx::Global(11)),
-                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21)),
+                IdxEdge::new(PrimitiveIdx::Local(10), PrimitiveIdx::Global(11)).expect("Failed to create IdxEdge for (u1,u2)"),
+                IdxEdge::new(PrimitiveIdx::Global(20), PrimitiveIdx::Global(21)).expect("Failed to create IdxEdge for (v1,v2)"),
             )),
         };
         assert_ne!(v1, v2);
@@ -436,8 +451,8 @@ mod tests {
         let tri = IdxTriangle::new(verts.clone(), None, PrimitiveIdx::Global(0));
         let edges = tri.edges();
         assert_eq!(edges.len(), 3);
-        assert!(edges.contains(&Edge(verts[0], verts[1])));
-        assert!(edges.contains(&Edge(verts[1], verts[2])));
-        assert!(edges.contains(&Edge(verts[2], verts[0])));
+        assert!(edges.contains(&Edge::new(verts[0], verts[1])));
+        assert!(edges.contains(&Edge::new(verts[1], verts[2])));
+        assert!(edges.contains(&Edge::new(verts[2], verts[0])));
     }
 }

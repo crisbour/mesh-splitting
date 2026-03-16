@@ -1,5 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
 
+use anyhow::Result;
 use log::info;
 use nalgebra::{Point3, Unit, Vector3};
 use obj::Obj;
@@ -282,9 +283,10 @@ impl PartialOrd for FaceIntersection {
     }
 }
 
-impl Into<Vec<IdxTriangle>> for FaceIntersection {
-    fn into(self) -> Vec<IdxTriangle> {
-        self.split_edges.into()
+impl TryInto<Vec<IdxTriangle>> for FaceIntersection {
+    type Error = anyhow::Error;
+    fn try_into(self) -> Result<Vec<IdxTriangle>> {
+        self.split_edges.try_into()
     }
 }
 

@@ -1,6 +1,7 @@
 use core::f64;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
+use anyhow::Result;
 use log::trace;
 use nalgebra::Point3;
 use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxEdge, IdxIntersection, Polygon, PrimitiveIdx, Vertex}};
@@ -203,13 +204,13 @@ impl SplitEdges {
     /// Triangulate the polygon formed by the outer edges, and add the resulting segments to the SplitEdges
     ///   - WARN: This works only if outer edges describe a convex polygon
     pub fn triangulate(&self) -> Self {
-        let convex_polygon = Polygon::from(self.outer_edges().clone());
+        let convex_polygon = Polygon::try_from(self.outer_edges().clone()).expect("Outer edges must form a valid polygon for triangulation");
 
         let triangles = convex_polygon.triangulate();
 
         let mut edges = self.edges.clone();
         for tri in triangles {
-            let tri_edges = [Edge(tri.verts[0], tri.verts[1]), Edge(tri.verts[1], tri.verts[2]), Edge(tri.verts[2], tri.verts[0])];
+            let tri_edges = [Edge::new(tri.verts[0], tri.verts[1]), Edge::new(tri.verts[1], tri.verts[2]), Edge::new(tri.verts[2], tri.verts[0])];
             for edge in tri_edges {
                 if !edges.contains(&edge) {
                     edges.push(edge);
@@ -286,7 +287,7 @@ impl SplitEdges {
                     }
                 };
                 if replace {
-                    edges[pos] = Edge(v0, v1);
+                    edges[pos] = Edge::new(v0, v1);
                 }
                 if let Some(outer_pos) = outer.iter().position(|&p| p == pos) {
                     trace!("Removing edge {:?} from outer edges, as it is shared between both SplitEdges sets.", other_edge);
@@ -334,7 +335,7 @@ impl SplitEdges {
                     _ => {other_edge.1}
                 };
                 outer.push(edges.len());
-                edges.push(Edge(v0, v1));
+                edges.push(Edge::new(v0, v1));
             }
             if !edges.contains(other_edge) {
             }
@@ -373,7 +374,7 @@ impl From<Vec<IdxTriangle>> for SplitEdges {
     fn from(value: Vec<IdxTriangle>) -> Self {
         let mut edges = Vec::new();
         for tri in value {
-            let tri_edges = [Edge(tri.verts[0], tri.verts[1]), Edge(tri.verts[1], tri.verts[2]), Edge(tri.verts[2], tri.verts[0])];
+            let tri_edges = [Edge::new(tri.verts[0], tri.verts[1]), Edge::new(tri.verts[1], tri.verts[2]), Edge::new(tri.verts[2], tri.verts[0])];
             for edge in tri_edges {
                 if !edges.contains(&edge) {
                     edges.push(edge);
@@ -384,16 +385,17 @@ impl From<Vec<IdxTriangle>> for SplitEdges {
     }
 }
 
-impl From<SplitEdges> for Vec<IdxTriangle> {
-    fn from(split_edges: SplitEdges) -> Self {
+impl TryFrom<SplitEdges> for Vec<IdxTriangle> {
+    type Error = anyhow::Error;
+    fn try_from(split_edges: SplitEdges) -> Result<Self> {
         let edges = &split_edges.edges;
         if edges.is_empty() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let mut idx = 0;
-        let mut edge_map: HashMap<IdxEdge, Edge> = HashMap::new();
+        let mut edge_set: HashSet<IdxEdge> = HashSet::new();
         for edge in edges.iter() {
-            edge_map.insert(edge.clone().into(), *edge);
+            edge_set.insert(edge.clone().into());
         }
         let verts = Vertex::from_edges(&edges);
         let mut triangles = Vec::new();
@@ -403,9 +405,9 @@ impl From<SplitEdges> for Vec<IdxTriangle> {
                     let v1 = verts[i];
                     let v2 = verts[j];
                     let v3 = verts[k];
-                    if edge_map.contains_key(&IdxEdge::new(v1.idx, v2.idx))
-                        && edge_map.contains_key(&IdxEdge::new(v2.idx, v3.idx))
-                        && edge_map.contains_key(&IdxEdge::new(v3.idx, v1.idx))
+                    if edge_set.contains(&IdxEdge::new(v1.idx, v2.idx)?)
+                        && edge_set.contains(&IdxEdge::new(v2.idx, v3.idx)?)
+                        && edge_set.contains(&IdxEdge::new(v3.idx, v1.idx)?)
                     {
                         triangles.push(IdxTriangle::new(
                             vec![v1, v2, v3],
@@ -442,7 +444,7 @@ impl From<SplitEdges> for Vec<IdxTriangle> {
             }
         }
         // TODO: Check that all edges are used
-        triangles
+        Ok(triangles)
     }
 }
 
@@ -506,6 +508,46 @@ mod tests {
         assert!(matches!(seg1.intersect_open(&seg2), Some(_)));
         assert!(matches!(seg1.intersect_with_eps(&seg2, 1e-9), Some(_)));
 
+    }
+
+    #[test]
+    fn test_segment_intersect() {
+        let seg1 = Segment::new(Point3::new(0., 0., 0.), Point3::new(1., 1., 0.));
+        let seg2 = Segment::new(Point3::new(0., 1., 0.), Point3::new(1., 0., 0.));
+        let intersection = seg1.intersect(&seg2);
+        assert!(intersection.is_some());
+        assert!((intersection.unwrap()-Point3::new(0.5, 0.5, 0.)).abs().sum() < 1e-9,
+            "Expected intersection at (0.5, 0.5, 0), got {:?}", intersection.unwrap());
+
+        let seg1 = Segment::new(Point3::new(1.0, 0.0, 0.0), Point3::new(1.0, 1.0, 0.0));
+        let seg2 = Segment::new(Point3::new(0.8, 0.5, 0.0), Point3::new(2.0, 0.0, 0.0));
+        assert!(seg1.intersect(&seg2).is_some());
+    }
+
+    #[test]
+    fn test_segment_intersect_open() {
+        let seg1 = Segment::new(Point3::new(0., 0., 0.), Point3::new(1., 1., 0.));
+        let seg2 = Segment::new(Point3::new(0., 1., 0.), Point3::new(1., 0., 0.));
+        let intersection = seg1.intersect_open(&seg2);
+        assert!(intersection.is_some());
+        assert!((intersection.unwrap()-Point3::new(0.5, 0.5, 0.)).abs().sum() < 1e-9,
+            "Expected intersection at (0.5, 0.5, 0), got {:?}", intersection.unwrap());
+    }
+
+    #[test]
+    fn test_segment_non_intersect_open() {
+        let seg1 = Segment::new(Point3::new(0., 0., 0.), Point3::new(1., 1., 0.));
+        let seg2 = Segment::new(Point3::new(1., 1., 0.), Point3::new(2., 0., 0.));
+        let intersection = seg1.intersect_open(&seg2);
+        assert!(intersection.is_none());
+    }
+
+    #[test]
+    fn test_segment_non_intersect() {
+        let seg1 = Segment::new(Point3::new(0., 0., 0.), Point3::new(1., 1., 0.));
+        let seg2 = Segment::new(Point3::new(0., 1., 0.), Point3::new(1., 2., 0.));
+        let intersection = seg1.intersect(&seg2);
+        assert!(intersection.is_none());
     }
 
 }
