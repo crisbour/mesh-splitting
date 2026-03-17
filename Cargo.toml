@@ -1,23 +1,27 @@
 [package]
 name = "mesh-splitting"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.102"
-assert_approx_eq = "1.1.0"
+anyhow = "^1.0.100"
+assert_approx_eq = "^1.1.0"
 colored = "3.1.1"
-env_logger = "0.11.9"
-kiddo = { version = "5.2.4", features = ["simd"] }
-log = "0.4.29"
-nalgebra = "0.34.1"
+env_logger = "^0.11.0"
+kiddo = { version = "^5.2.4", features = ["simd"] }
+log = "^0.4.29"
+nalgebra = "^0.31.*"
 #obj = "0.10.2"
 obj = { git = "https://github.com/kvark/obj", branch = "master" }
 
 [dev-dependencies]
 assert_approx_eq = "1.1.0"
+criterion = { version = "0.8.2", features = ["html_reports"] }
 tempfile = "3.27.0"
 
 [features]
 release-logging = ["log/max_level_info"]
 
+[[bench]]
+name = "water_tank"
+harness = false

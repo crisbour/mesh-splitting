@@ -9,8 +9,7 @@ use log::{info, trace, warn};
 use nalgebra::{Point3, Unit, Vector3};
 
 use crate::{
-    Collide, Segment, Split, SplitEdges, Triangle,
-    primitives::{Edge, IdxEdge, IdxIntersection, Normal, Polygon, PrimitiveIdx, Vertex},
+    Aabb, Collide, Segment, Split, SplitEdges, Triangle, primitives::{Edge, IdxEdge, IdxIntersection, Normal, Polygon, PrimitiveIdx, Vertex}
 };
 
 type Dir3 = Unit<Vector3<f64>>;
@@ -95,6 +94,28 @@ impl IdxTriangle {
 
     pub fn segs(&self) -> [Segment; 3] {
         self.edges().map(|e| e.into())
+    }
+
+    pub fn aabb(&self) -> Aabb {
+        let mins = self
+            .verts
+            .iter()
+            .map(|v| v.value)
+            .fold(
+                Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY),
+                //|acc, v| acc.simd_min(v)
+                |acc, v| Point3::new(acc[0].min(v[0]), acc[1].min(v[1]), acc[2].min(v[2]))
+            );
+        let maxs = self
+            .verts
+            .iter()
+            .map(|v| v.value)
+            .fold(
+                Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+                //|acc, v| acc.simd_max(v)
+                |acc, v| Point3::new(acc[0].max(v[0]), acc[1].max(v[1]), acc[2].max(v[2]))
+            );
+        Aabb{mins, maxs}
     }
 
     pub fn tri(&self) -> Triangle {

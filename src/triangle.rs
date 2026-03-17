@@ -1,5 +1,5 @@
 use log::{trace, warn};
-use nalgebra::{Point3, Vector3, Unit};
+use nalgebra::{Point3, Unit, Vector3};
 
 use crate::{Aabb, Collide,Segment};
 type Dir3 = Unit<Vector3<f64>>;
@@ -49,11 +49,11 @@ impl Triangle {
     pub fn aabb(&self) -> Aabb {
         let mins = self.verts.iter().fold(
             Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY),
-            |acc, v| Point3::new(acc[0].min(v[0]), acc[1].min(v[1]), acc[2].min(v[2])),
+            |acc, v| Point3::new(acc[0].min(v[0]), acc[1].min(v[1]), acc[2].min(v[2]))
         );
         let maxs = self.verts.iter().fold(
             Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
-            |acc, v| Point3::new(acc[0].max(v[0]), acc[1].max(v[1]), acc[2].max(v[2])),
+            |acc, v| Point3::new(acc[0].max(v[0]), acc[1].max(v[1]), acc[2].max(v[2]))
         );
         Aabb{mins, maxs}
     }
@@ -323,6 +323,35 @@ impl Collide<Aabb> for Triangle {
 mod tests {
     // We implement the transformable for the triangle primitive, so we shall use this for tests.
     use super::*;
+
+    #[test]
+    fn test_triangle_aabb() {
+        let tri1 = Triangle::new([
+            Point3::new(0., 0., 0.),
+            Point3::new(1., 0., 0.),
+            Point3::new(1., 1., 0.),
+        ]);
+        let aabb = Aabb {
+            mins: Point3::new(0., 0., 0.),
+            maxs: Point3::new(1., 1., 0.),
+        };
+        let tri1_aabb = tri1.aabb();
+        assert_eq!(tri1_aabb.mins, aabb.mins);
+        assert_eq!(tri1_aabb.maxs, aabb.maxs);
+
+        let tri2 = Triangle::new([
+            Point3::new(0.8, 0.5, 0.),
+            Point3::new(2.,  0.,  0.),
+            Point3::new(2.,  1.,  0.)
+        ]);
+        let aabb = Aabb {
+            mins: Point3::new(0.8, 0., 0.),
+            maxs: Point3::new(2., 1., 0.),
+        };
+        let tri2_aabb = tri2.aabb();
+        assert_eq!(tri2_aabb.mins, aabb.mins);
+        assert_eq!(tri2_aabb.maxs, aabb.maxs);
+    }
 
     #[test]
     fn test_vertex_in() {

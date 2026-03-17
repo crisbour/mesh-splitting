@@ -3,13 +3,12 @@ use colored::Colorize;
 
 use anyhow::Result;
 use kiddo::{Manhattan, NearestNeighbour, float::kdtree::KdTree};
-use log::info;
+use log::{debug, info};
 use nalgebra::{Point3, Unit, Vector3};
 use obj::ObjData;
 
 use crate::{
-    Collide, IdxTriangle, Split, SplitEdges,
-    primitives::{IdxEdge, IdxIntersection, Normal, PrimitiveIdx, Vertex},
+    Aabb, Collide, IdxTriangle, Split, SplitEdges, primitives::{IdxEdge, IdxIntersection, Normal, PrimitiveIdx, Vertex}
 };
 
 type Dir3 = Unit<Vector3<f64>>;
@@ -159,7 +158,7 @@ pub fn parse_obj(
             Point3::new(vs_f64[0], vs_f64[1], vs_f64[2])
         })
     );
-    println!("Allocated verts idx: {:?}", allocated_verts_idx);
+    debug!("Allocated verts idx: {:?}", allocated_verts_idx);
 
     let allocated_norms_idx = norms.allocate_iter(
         obj_data
@@ -171,7 +170,7 @@ pub fn parse_obj(
         })
     );
 
-    println!("Allocated norms idx: {:?}", allocated_norms_idx);
+    debug!("Allocated norms idx: {:?}", allocated_norms_idx);
 
     let meshes =
         obj_data
@@ -212,19 +211,26 @@ pub fn parse_obj(
                 .collect();
             //faces.alllocate_size(obj_faces.len());
             let polygons = faces.allocate_iter(idx_tris);
-            println!("Allocated faces idx for mesh {}: {:?}", obj.name, polygons);
+            debug!("Allocated faces idx for mesh {}: {:?}", obj.name, polygons);
 
-            Mesh {
-                name: obj.name.clone(),
-                idx: PrimitiveIdx::Global(idx),
+            Mesh::from_polygons(
+                obj.name.clone(),
+                PrimitiveIdx::Global(idx),
                 polygons,
-                verts: verts.clone(),
-                norms: norms.clone(),
-                faces: faces.clone(),
-            }
+                &verts,
+                &norms,
+                &faces)
         })
         .collect();
 
+    // Vertex deduplication, and remap the vertex idx in faces accordingly
+    let verts_remap = prune_verts(&verts, &faces);
+    debug!("Vertices remaped: {:?}", verts_remap.len());
+
+    (meshes, verts, norms, faces)
+}
+
+pub fn prune_verts(verts: &Verts, faces: &Faces) -> BTreeMap<usize, usize> {
     // Build k-d tree from vertices
     let mut kdtree: KdTree<f64, usize, 3, 32, u32> = KdTree::new();
     for (idx, vert) in verts.borrow().iter().enumerate() {
@@ -244,9 +250,8 @@ pub fn parse_obj(
         }
     }
     faces.remap(&vert_rename);
-    println!("Vertices remaped: {:?}", vert_rename.len());
 
-    (meshes, verts, norms, faces)
+    vert_rename
 }
 
 #[derive(Clone, Debug)]
@@ -258,11 +263,32 @@ pub struct Mesh {
     pub verts: Verts,
     pub norms: Norms,
     pub faces: Faces,
+    pub aabb: Aabb,
 }
 
 impl Mesh {
+    pub fn new(name: String, idx: PrimitiveIdx, verts: &Verts, norms: &Norms, faces: &Faces) -> Self {
+        let aabb = Aabb::null();
+        Self { name, idx, polygons: Vec::new(), verts: verts.clone(), norms: norms.clone(), faces: faces.clone(), aabb }
+    }
+    pub fn from_polygons(name: String, idx: PrimitiveIdx, polygons: Vec<PrimitiveIdx>, verts: &Verts, norms: &Norms, faces: &Faces) -> Self {
+        let mut mesh = Self::new(name, idx, verts, norms, faces);
+        let aabb = polygons.iter().fold(Aabb::null(), |aabb, &idx| {
+            let tri_aabb = faces.borrow()[match idx {
+                PrimitiveIdx::Local(_) => panic!("Expected global indices for mesh polygons, found: {:?}", idx),
+                PrimitiveIdx::Global(idx) => idx,
+            }].aabb();
+            aabb + tri_aabb
+        });
+        mesh.polygons = polygons;
+        mesh.aabb = aabb;
+        mesh
+    }
     pub fn push(&mut self, new_tris: Vec<IdxTriangle>) {
         let current_size = self.faces.borrow().len();
+        for tri in new_tris.iter() {
+            self.aabb = self.aabb.clone() + tri.aabb();
+        }
         let new_polygons = self.faces.allocate_iter(
             new_tris
                 .into_iter()
@@ -335,10 +361,30 @@ pub struct VertexMatch {
     pub from: (IdxEdge, IdxEdge),
 }
 
+// FIXME: A better colision detection could be employed to ensure
+// the expensive Split methods are not called unecessary
 impl Collide<Mesh> for Mesh {
     fn overlap(&self, other: &Mesh) -> bool {
-        return true;
-        todo!()
+        if !self.aabb.overlap(&other.aabb) {
+            return false;
+        }
+        let mut tri_u_found = false;
+        for &tri_u_idx in self.polygons.iter() {
+            let tri_u = &self.faces.borrow()[*tri_u_idx];
+            if tri_u.tri().overlap(&other.aabb) {
+                tri_u_found = true;
+                break;
+            }
+        }
+        let mut tri_v_found = false;
+        for &tri_v_idx in other.polygons.iter() {
+            let tri_v = &other.faces.borrow()[*tri_v_idx];
+            if tri_v.tri().overlap(&self.aabb) {
+                tri_v_found = true;
+                break;
+            }
+        }
+        tri_u_found && tri_v_found
     }
 }
 
@@ -380,7 +426,6 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
             for (idx_tri_v, tri_v) in tri_v_union.iter() {
                 // FIXME: Would be better to have a collision tree checking here instead of
                 // brute force pairwise collision tests
-                // FIXME: Don't need to convert actually
                 if tri_u.tri().overlap(&tri_v.tri()) {
                     info!("Intersect triangles {:?} and {:?} from meshes {:?} and {:?}",
                         idx_tri_u, idx_tri_v, self.idx, other.idx);
@@ -419,6 +464,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
             verts: self.verts.clone(),
             norms: self.norms.clone(),
             faces: self.faces.clone(),
+            aabb: Aabb::null(),
         };
 
         // Map from local vertex idx in intersection to new global vertex idx in new_mesh
@@ -503,7 +549,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
 pub fn remesh(mut meshes: Vec<Mesh>) -> Result<Vec<Mesh>> {
     info!("Start splitting meshes");
     for mesh in &meshes {
-        println!(" > Mesh: {}", mesh.name.blue());
+        debug!(" > Mesh: {}", mesh.name.blue());
     }
 
     let mut resolved_meshes = Vec::new();
@@ -525,6 +571,7 @@ pub fn remesh(mut meshes: Vec<Mesh>) -> Result<Vec<Mesh>> {
                     verts: mesh_a.verts.clone(),
                     norms: mesh_a.norms.clone(),
                     faces: mesh_a.faces.clone(),
+                    aabb: Aabb::null(),
                 };
                 for tri_inter in inter.into_iter() {
                     // WARN: Information is lost about the normals in the intersection, need to
