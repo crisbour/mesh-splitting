@@ -23,6 +23,15 @@ pub struct IdxTriangle {
     pub flat: bool,
 }
 
+impl PartialEq for IdxTriangle {
+    fn eq(&self, other: &Self) -> bool {
+        let self_idxs = self.verts.map(|v| v.idx);
+        let other_idxs = other.verts.map(|v| v.idx);
+        self_idxs.iter().all(|v| other_idxs.contains(v))
+            && other_idxs.iter().all(|v| self_idxs.contains(v))
+    }
+}
+
 impl Display for IdxTriangle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

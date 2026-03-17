@@ -4,10 +4,21 @@ use nalgebra::{Point3, Vector3, Unit};
 use crate::{Aabb, Collide,Segment};
 type Dir3 = Unit<Vector3<f64>>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Triangle {
     pub verts: [Point3<f64>; 3],
     pub plane_norm: Dir3,
+}
+
+// Compare triangles to be in the same plane and that they have the same verts, not necessary the
+// same surface normal direction
+impl PartialEq for Triangle {
+    fn eq(&self, other: &Self) -> bool {
+        let diff_plane_norm = (self.plane_norm.into_inner() - other.plane_norm.into_inner()).abs().sum();
+        let diff_opposite_plane_norm = (self.plane_norm.into_inner() + other.plane_norm.into_inner()).abs().sum();
+        // Check that the vertices are the same (regardless of order) and that the plane normals are either the same or opposite
+        self.verts.iter().all(|v| other.verts.contains(v)) && (diff_plane_norm < 1e-9 || diff_opposite_plane_norm < 1e-9)
+    }
 }
 
 impl Triangle {
