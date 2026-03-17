@@ -508,3 +508,50 @@ pub fn remesh(mut meshes: Vec<Mesh>) -> Result<Vec<Mesh>> {
 
     Ok(resolved_meshes)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::BufReader;
+
+    use obj::ObjData;
+
+    use super::*;
+
+    #[test]
+    fn test_parse_obj() -> Result<()> {
+        static OBJ_STR: &'static str = "
+            v 0 0 0
+            v 2 0 0
+            v 2 1 0
+            v 0 1 0
+            vn 0 0 1
+
+            o Tank
+            f 1//1 2//1 3//1
+            f 1//1 3//1 4//1
+
+            v 2 0.8 0
+            v 0 0.8 0
+            vn 0 0 -1
+
+            o Water
+            f 1//2 2//2 5//2
+            f 4//2 2//2 5//2
+        ";
+        let mut reader = BufReader::new(OBJ_STR.as_bytes());
+        let obj = ObjData::load_buf(&mut reader)?;
+        let (meshes, verts, norms, faces) = parse_obj(obj);
+
+        println!("Verts: {}", verts.borrow().len());
+        println!("Norms: {}", norms.borrow().len());
+        println!("Faces: {}", faces.borrow().len());
+
+        let resolved_meshes = remesh(meshes)?;
+
+        println!("Resolved Meshes: {:?}", resolved_meshes.iter().map(|m| m.polygons.clone()));
+
+        assert!(resolved_meshes.len() == 3, "Expected 3 meshes after remeshing, got {}", resolved_meshes.len());
+        Ok(())
+    }
+
+}

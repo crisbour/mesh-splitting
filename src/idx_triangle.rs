@@ -1027,46 +1027,16 @@ mod tests {
     fn test_overlaping_triangles() {
         let tri1 = IdxTriangle::new(
             vec![
-                Vertex {
-                    value: Point3::new(0., 0., 0.),
-                    idx: PrimitiveIdx::Global(0),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 0., 0.),
-                    idx: PrimitiveIdx::Global(1),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 1., 0.),
-                    idx: PrimitiveIdx::Global(2),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(0),
-        );
+                Vertex { value: Point3::new(0., 0., 0.), idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(1., 0., 0.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(1., 1., 0.), idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0));
         let tri2 = IdxTriangle::new(
             vec![
-                Vertex {
-                    value: Point3::new(0., 1., 0.),
-                    idx: PrimitiveIdx::Global(4),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 0., 0.),
-                    idx: PrimitiveIdx::Global(1),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 1., 0.),
-                    idx: PrimitiveIdx::Global(2),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(1),
-        );
+                Vertex { value: Point3::new(0., 1., 0.), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(1., 0., 0.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(1., 1., 0.), idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(1));
 
         assert!(tri1.overlap(&tri2));
     }
@@ -1075,156 +1045,69 @@ mod tests {
     fn test_non_overlaping_triangles() {
         let tri1 = IdxTriangle::new(
             vec![
-                Vertex {
-                    value: Point3::new(0., 0., 0.),
-                    idx: PrimitiveIdx::Global(0),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 0., 0.),
-                    idx: PrimitiveIdx::Global(1),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 1., 0.),
-                    idx: PrimitiveIdx::Global(2),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(0),
-        );
+                Vertex { value: Point3::new(0., 0., 0.), idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(1., 0., 0.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(1., 1., 0.), idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0));
 
         // Not coplanar
         let tri2 = IdxTriangle::new(
             vec![
-                Vertex {
-                    value: Point3::new(0., 1., 1.),
-                    idx: PrimitiveIdx::Global(3),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 0., 1.),
-                    idx: PrimitiveIdx::Global(4),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 1., 1.),
-                    idx: PrimitiveIdx::Global(5),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(1),
-        );
+                Vertex { value: Point3::new(0., 1., 1.), idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(1., 0., 1.), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(1., 1., 1.), idx: PrimitiveIdx::Global(5), from: None, },
+            ], None, PrimitiveIdx::Global(1));
         assert!(!tri1.overlap(&tri2));
 
         // Coplanar but not overlapping
         let tri2 = IdxTriangle::new(
             vec![
-                Vertex {
-                    value: Point3::new(0., 0.1, 0.),
-                    idx: PrimitiveIdx::Global(6),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(0., 1., 0.),
-                    idx: PrimitiveIdx::Global(7),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(0.9, 1., 0.),
-                    idx: PrimitiveIdx::Global(8),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(2),
-        );
+                Vertex { value: Point3::new(0., 0.1, 0.), idx: PrimitiveIdx::Global(6), from: None, },
+                Vertex { value: Point3::new(0., 1., 0.), idx: PrimitiveIdx::Global(7), from: None, },
+                Vertex { value: Point3::new(0.9, 1., 0.), idx: PrimitiveIdx::Global(8), from: None, },
+            ], None, PrimitiveIdx::Global(2));
         assert!(!tri1.overlap(&tri2));
 
         // Intersecting, but not overlapping in the same plane
         let tri2 = IdxTriangle::new(
             vec![
-                Vertex {
-                    value: Point3::new(0., 0., -1.),
-                    idx: PrimitiveIdx::Global(9),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 0., 1.),
-                    idx: PrimitiveIdx::Global(4),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 1., 1.),
-                    idx: PrimitiveIdx::Global(5),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(3),
-        );
+                Vertex { value: Point3::new(0., 0., -1.), idx: PrimitiveIdx::Global(9), from: None, },
+                Vertex { value: Point3::new(1., 0., 1.), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(1., 1., 1.), idx: PrimitiveIdx::Global(5), from: None, },
+            ], None, PrimitiveIdx::Global(3));
         assert!(!tri1.overlap(&tri2));
     }
 
     #[test]
-    fn test_overlaping_triangles_one_vertex() {
+    fn test_overlaping_triangles_one_vertex() -> Result<()> {
         init_logger();
         let tri1 = IdxTriangle::new(
             vec![
-                Vertex {
-                    value: Point3::new(0., 0., 0.),
-                    idx: PrimitiveIdx::Global(0),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 0., 0.),
-                    idx: PrimitiveIdx::Global(1),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(1., 1., 0.),
-                    idx: PrimitiveIdx::Global(2),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(0),
+                Vertex { value: Point3::new(0., 0., 0.), idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(1., 0., 0.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(1., 1., 0.), idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0),
         );
         let tri2 = IdxTriangle::new(
             vec![
-                Vertex {
-                    value: Point3::new(0.8, 0.5, 0.),
-                    idx: PrimitiveIdx::Global(3),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(2., 0., 0.),
-                    idx: PrimitiveIdx::Global(4),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(2., 1., 0.),
-                    idx: PrimitiveIdx::Global(5),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(1),
+                Vertex { value: Point3::new(0.8, 0.5, 0.), idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(2.,  0.,  0.), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(2.,  1.,  0.), idx: PrimitiveIdx::Global(5), from: None, },
+            ], None, PrimitiveIdx::Global(1),
         );
 
         assert!(tri1.overlap(&tri2));
 
         info!("Intersecting {:?} and {:?}", tri1.idx, tri2.idx);
-        let inter = tri1.intersect(&tri2);
+        let inter = tri1.intersect(&tri2)?;
         println!("Intersections: {:?}", inter);
-        let (new_tri1, inter) = tri1.split(inter);
+        let (new_tri1, inter) = tri1.split(inter)?;
         let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
 
         println!("New Triangles: {}", new_tri1.len());
         assert_eq!(new_tri1.len(), 4);
         assert_eq!(inter_tris.len(), 1);
+        Ok(())
     }
 
     // Test all triangles split choices
@@ -1287,28 +1170,12 @@ mod tests {
     }
 
     #[test]
-    fn test_matching_triangles_split() {
-        let tri1 = IdxTriangle::new(
-            vec![
-                Vertex {
-                    value: Point3::new(0., 0., 0.),
-                    idx: PrimitiveIdx::Global(0),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(0., 1., 0.),
-                    idx: PrimitiveIdx::Global(1),
-                    from: None,
-                },
-                Vertex {
-                    value: Point3::new(0., 1., 1.),
-                    idx: PrimitiveIdx::Global(2),
-                    from: None,
-                },
-            ],
-            None,
-            PrimitiveIdx::Global(0),
-        );
+    fn test_matching_triangles_split() -> Result<()> {
+        let tri1 = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0., 0.), idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 1., 0.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(0., 1., 1.), idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0));
         let mut tri2 = tri1.clone();
         tri2.idx = PrimitiveIdx::Global(1);
 
@@ -1317,280 +1184,395 @@ mod tests {
         let tri2_segs: [Segment; 3] = tri2.edges().map(|e| e.into());
         assert_eq!(count_colinear(&tri1_segs, &tri2_segs), 3);
 
-        let inter = tri1.intersect(&tri2);
-        let (new_tri1, inter) = tri1.split(inter);
-        assert_eq!(new_tri1.len(), 1);
-        assert_eq!(new_tri1[0].tri(), tri1.tri());
+        let inter = tri1.intersect(&tri2)?;
+        let (new_tri1, inter) = tri1.split(inter)?;
+        let (new_tri2, inter) = tri2.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
 
-        let (new_tri2, inter) = tri2.split(inter);
-        assert_eq!(new_tri2.len(), 1);
-        assert_eq!(new_tri2[0].tri(), tri2.tri());
+        assert_eq!(new_tri1.len(), 0);
+        assert_eq!(new_tri2.len(), 0);
+        assert_eq!(inter_tris.len(), 1);
+
+        assert_eq!(inter_tris[0].tri(), tri1.tri());
+        Ok(())
     }
 
-    //#[test]
-    //fn test_colinear_edges() {
-    //    let tri_u = Triangle::new([
-    //        Point3::new(0., 0., 1.),
-    //        Point3::new(0., 0., -1.),
-    //        Point3::new(0., 1., 0.),
-    //    ]);
-    //    let segs_u = tri_u.edges();
+    #[test]
+    fn test_colinear_edges() -> Result<()> {
+        init_logger();
+        let tri_u = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0., 1.),  idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 0., -1.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(0., 1., 0.),  idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0));
+        let segs_u = tri_u.segs();
 
-    //    // a) i)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0., 1.),
-    //        Point3::new(0., 0., -1.),
-    //        Point3::new(0., 0.5, 0.5),
-    //    ]);
-    //    let segs_v = tri_v.edges();
-    //    assert_eq!(count_colinear(&segs_u, &segs_v), 2);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 2);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 1);
+        // a) i)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0.,  1.),  idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 0.,  -1.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(0., 0.5, 0.5), idx: PrimitiveIdx::Global(3), from: None, },
+            ], None, PrimitiveIdx::Global(1));
+        let segs_v = tri_v.segs();
+        assert_eq!(count_colinear(&segs_u, &segs_v), 2);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 1);
+        assert_eq!(new_tris_v.len(), 0);
+        assert_eq!(inter_tris.len(), 1);
 
-    //    // a) ii)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0., 1.),
-    //        Point3::new(0., 0., 0.),
-    //        Point3::new(0., 0.5, 0.5),
-    //    ]);
-    //    let segs_v = tri_v.edges();
-    //    assert_eq!(count_colinear(&segs_u, &segs_v), 2);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 3);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 1);
+        // a) ii)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0.,  1.),  idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 0.,  0.),  idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(0., 0.5, 0.5), idx: PrimitiveIdx::Global(3), from: None, },
+            ], None, PrimitiveIdx::Global(2));
+        let segs_v = tri_v.segs();
+        assert_eq!(count_colinear(&segs_u, &segs_v), 2);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 2);
+        assert_eq!(new_tris_v.len(), 0);
+        assert_eq!(inter_tris.len(), 1);
 
-    //    // b)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0., 1.),
-    //        Point3::new(0., 0., -0.8),
-    //        Point3::new(0., -1., 0.),
-    //    ]);
-    //    let segs_v = tri_v.edges();
-    //    assert_eq!(count_colinear(&segs_u, &segs_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 1);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 1);
+        // b)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0.,  1.),   idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 0.,  -0.8), idx: PrimitiveIdx::Global(5), from: None, },
+                Vertex { value: Point3::new(0., -1., 0.),   idx: PrimitiveIdx::Global(6), from: None, },
+            ], None, PrimitiveIdx::Global(3));
+        let segs_v = tri_v.segs();
+        assert_eq!(count_colinear(&segs_u, &segs_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 1);
+        assert_eq!(new_tris_v.len(), 1);
+        assert_eq!(inter_tris.len(), 0);
 
-    //    // c) vert in
-    //    // i) // WARN: Duplicate of vert_in=1 d)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0., 1.),
-    //        Point3::new(0., 0., -1.),
-    //        Point3::new(0., 0.5, 0.),
-    //    ]);
-    //    let segs_v = tri_v.edges();
-    //    assert_eq!(count_colinear(&segs_u, &segs_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 3);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 1);
+        // c) vert in
+        // i) // WARN: Duplicate of vert_in=1 d)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0.,  1.),  idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 0.,  -1.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(0., 0.5, 0.),  idx: PrimitiveIdx::Global(8), from: None, },
+            ], None, PrimitiveIdx::Global(4));
+        let segs_v = tri_v.segs();
+        assert_eq!(count_colinear(&segs_u, &segs_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 2);
+        assert_eq!(new_tris_v.len(), 0);
+        assert_eq!(inter_tris.len(), 1);
 
-    //    // ii) // WARN: Duplicate of vert_in=1 c)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0., 1.),
-    //        Point3::new(0., 0., -0.5),
-    //        Point3::new(0., 0.5, 0.),
-    //    ]);
-    //    let segs_v = tri_v.edges();
-    //    assert_eq!(count_colinear(&segs_u, &segs_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 4);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 1);
+        // ii) // WARN: Duplicate of vert_in=1 c)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0.,  1.),   idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 0.,  -0.5), idx: PrimitiveIdx::Global(9), from: None, },
+                Vertex { value: Point3::new(0., 0.5, 0.),   idx: PrimitiveIdx::Global(8), from: None, },
+            ], None, PrimitiveIdx::Global(5));
+        let segs_v = tri_v.segs();
+        assert_eq!(count_colinear(&segs_u, &segs_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        println!("Intersection: {:?}", inter.edges.iter().map(|e| IdxEdge::try_from(e.clone())).collect::<Vec<_>>());
+        println!("New tris U: {:?}", new_tris_u.iter().map(|tri| tri.verts.map(|v| v.idx)).collect::<Vec<_>>());
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 3);
+        assert_eq!(new_tris_v.len(), 0);
+        assert_eq!(inter_tris.len(), 1);
 
-    //    // iii) // WARN: Duplicate of vert_in=1 b)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0., 0.5),
-    //        Point3::new(0., 0., -0.5),
-    //        Point3::new(0., 0.5, 0.),
-    //    ]);
-    //    let segs_v = tri_v.edges();
-    //    assert_eq!(count_colinear(&segs_u, &segs_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 5);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 1);
+        // iii) // WARN: Duplicate of vert_in=1 b)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0.,  0.5),  idx: PrimitiveIdx::Global(10), from: None, },
+                Vertex { value: Point3::new(0., 0.,  -0.5), idx: PrimitiveIdx::Global(9),  from: None, },
+                Vertex { value: Point3::new(0., 0.5, 0.),   idx: PrimitiveIdx::Global(8),  from: None, },
+            ], None, PrimitiveIdx::Global(6));
+        let segs_v = tri_v.segs();
+        assert_eq!(count_colinear(&segs_u, &segs_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 4);
+        assert_eq!(new_tris_v.len(), 0);
+        assert_eq!(inter_tris.len(), 1);
 
-    //    // iv) All  vertices of V on edges of U
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0., 0.5),
-    //        Point3::new(0., 0., -0.5),
-    //        Point3::new(0., 0.5, 0.5),
-    //    ]);
-    //    let segs_v = tri_v.edges();
-    //    assert_eq!(count_colinear(&segs_u, &segs_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 4);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 1);
-    //}
+        // iv) All  vertices of V on edges of U
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0.,  0.5),  idx: PrimitiveIdx::Global(10), from: None, },
+                Vertex { value: Point3::new(0., 0.,  -0.5), idx: PrimitiveIdx::Global(9),  from: None, },
+                Vertex { value: Point3::new(0., 0.5, 0.5),  idx: PrimitiveIdx::Global(11), from: None, },
+            ], None, PrimitiveIdx::Global(7));
+        let segs_v = tri_v.segs();
+        assert_eq!(count_colinear(&segs_u, &segs_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 3);
+        assert_eq!(new_tris_v.len(), 0);
+        assert_eq!(inter_tris.len(), 1);
+        Ok(())
+    }
 
-    //#[test]
-    //fn test_one_vert_in() {
-    //    let tri_u = Triangle::new([
-    //        Point3::new(0., 0.5, 0.5),
-    //        Point3::new(0., 0.5, -0.5),
-    //        Point3::new(0., 1.5, 0.),
-    //    ]);
+    #[test]
+    fn test_one_vert_in() -> Result<()> {
+        let tri_u = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 0.5, 0.5),  idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 0.5, -0.5), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(0., 1.5, 0.),   idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0));
 
-    //    // a)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 1., 0.),
-    //        Point3::new(0., 0., 0.5),
-    //        Point3::new(0., 0., -0.5),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 5);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 3);
+        // a)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 1.,  0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0.,  0.5), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(0., 0., -0.5), idx: PrimitiveIdx::Global(5), from: None, },
+            ], None, PrimitiveIdx::Global(1));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 4);
+        assert_eq!(new_tris_v.len(), 2);
+        assert_eq!(inter_tris.len(), 1);
 
-    //    // b)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 1., 0.),
-    //        Point3::new(0., 2., 0.5),
-    //        Point3::new(0., 2., -0.5),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 5);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 5);
+        // b)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 1.,  0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 2.,  0.5), idx: PrimitiveIdx::Global(6), from: None, },
+                Vertex { value: Point3::new(0., 2., -0.5), idx: PrimitiveIdx::Global(7), from: None, },
+            ], None, PrimitiveIdx::Global(2));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 3);
+        assert_eq!(new_tris_v.len(), 3);
+        assert_eq!(inter_tris.len(), 2);
 
-    //    // c)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 1., 0.),
-    //        Point3::new(0., 0., 0.5),
-    //        Point3::new(0., 0., -1.),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 4);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 3);
+        // c)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 1.,  0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0.,  0.5), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(0., 0., -1.), idx: PrimitiveIdx::Global(8), from: None, },
+            ], None, PrimitiveIdx::Global(3));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 3);
+        assert_eq!(new_tris_v.len(), 2);
+        assert_eq!(inter_tris.len(), 1);
 
-    //    // d)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 1., 0.),
-    //        Point3::new(0., 0., 1.),
-    //        Point3::new(0., 0., -1.),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 1);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 3);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 3);
-    //}
+        // d)
+        let tri_v = IdxTriangle::new( vec![
+                Vertex { value: Point3::new(0., 1.,  0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0.,  1.), idx: PrimitiveIdx::Global(9), from: None, },
+                Vertex { value: Point3::new(0., 0., -1.), idx: PrimitiveIdx::Global(8), from: None, },
+            ], None, PrimitiveIdx::Global(4));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 1);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 2);
+        assert_eq!(new_tris_v.len(), 2);
+        assert_eq!(inter_tris.len(), 1);
+        Ok(())
+    }
 
-    //#[test]
-    //fn test_two_verts_in() {
-    //    let tri_u = Triangle::new([
-    //        Point3::new(0., 2., 0.),
-    //        Point3::new(0., 0., -1.),
-    //        Point3::new(0., 0., 1.),
-    //    ]);
+    #[test]
+    fn test_two_verts_in() -> Result<()> {
+        let tri_u = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 2., 0.),  idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 0., -1.), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(0., 0., 1.),   idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0));
 
-    //    // a) i)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0.5, 0.5),
-    //        Point3::new(0., 0.5, -0.5),
-    //        Point3::new(0., -1., 0.),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 2);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 7);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 3);
+        // a) i)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 0.5, 0.5),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0.5, -0.5), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(0., -1., 0.),   idx: PrimitiveIdx::Global(5), from: None, },
+            ], None, PrimitiveIdx::Global(1));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 2);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 5);
+        assert_eq!(new_tris_v.len(), 1);
+        assert_eq!(inter_tris.len(), 2);
 
-    //    // a) ii)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0.5, 0.5),
-    //        Point3::new(0., 0.5, -0.5),
-    //        Point3::new(0., 3., 0.),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 2);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 7);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 5);
+        // a) ii)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 0.5, 0.5),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0.5, -0.5), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(0., 3., 0.),   idx: PrimitiveIdx::Global(6), from: None, },
+            ], None, PrimitiveIdx::Global(2));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 2);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 4);
+        assert_eq!(new_tris_v.len(), 2);
+        assert_eq!(inter_tris.len(), 3);
 
-    //    // b)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 0.5, 0.5),
-    //        Point3::new(0., 0.5, 0.),
-    //        Point3::new(0., 3., 0.),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 2);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 6);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 3);
-    //}
+        // b)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 0.5, 0.5),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0.5, 0.), idx: PrimitiveIdx::Global(7), from: None, },
+                Vertex { value: Point3::new(0., 3., 0.),   idx: PrimitiveIdx::Global(6), from: None, },
+            ], None, PrimitiveIdx::Global(3));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 2);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 4);
+        assert_eq!(new_tris_v.len(), 1);
+        assert_eq!(inter_tris.len(), 2);
+        Ok(())
+    }
 
-    //#[test]
-    //fn test_verts_out() {
-    //    let tri_u = Triangle::new([
-    //        Point3::new(0., 1., 0.5),
-    //        Point3::new(0., 1., -0.5),
-    //        Point3::new(0., -1., 0.),
-    //    ]);
+    #[test]
+    fn test_all_verts_in() -> Result<()> {
+        init_logger();
+        let tri_u = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., -1., 0.5),  idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., -1., -0.5), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(0., 1., 0.),   idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0));
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., -0.5, 0.25),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., -0.5, -0.25), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(0., 0.5, 0.),   idx: PrimitiveIdx::Global(5), from: None, },
+            ], None, PrimitiveIdx::Global(1));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 3);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 6);
+        assert_eq!(new_tris_v.len(), 0);
+        assert_eq!(inter_tris.len(), 1);
+        Ok(())
+    }
 
-    //    // a) i)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 2., 0.),
-    //        Point3::new(0., 0., -0.4),
-    //        Point3::new(0., 0., 1.5),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 5);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 7);
+    #[test]
+    fn test_verts_out() -> Result<()> {
+        init_logger();
+        let tri_u = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 1., 0.5),  idx: PrimitiveIdx::Global(0), from: None, },
+                Vertex { value: Point3::new(0., 1., -0.5), idx: PrimitiveIdx::Global(1), from: None, },
+                Vertex { value: Point3::new(0., -1., 0.),   idx: PrimitiveIdx::Global(2), from: None, },
+            ], None, PrimitiveIdx::Global(0));
 
-    //    // a) ii)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 2., 0.),
-    //        Point3::new(0., 0., -0.4),
-    //        Point3::new(0., 0., 1.),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 5);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 6);
+        // a) i)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 2., 0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0., -0.4), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(0., 0., 1.5),   idx: PrimitiveIdx::Global(5), from: None, },
+            ], None, PrimitiveIdx::Global(1));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 2);
+        assert_eq!(new_tris_v.len(), 4);
+        assert_eq!(inter_tris.len(), 3);
 
-    //    // b) i)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 2., 0.),
-    //        Point3::new(0., 0., -1.),
-    //        Point3::new(0., 0., 1.5),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 3);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 6);
+        // a) ii)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 2., 0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0., -0.4), idx: PrimitiveIdx::Global(4), from: None, },
+                Vertex { value: Point3::new(0., 0., 1.),   idx: PrimitiveIdx::Global(6), from: None, },
+            ], None, PrimitiveIdx::Global(2));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 2);
+        assert_eq!(new_tris_v.len(), 3);
+        assert_eq!(inter_tris.len(), 3);
 
-    //    // b) ii)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 2., 0.),
-    //        Point3::new(0., 0., -1.),
-    //        Point3::new(0., 0., 1.),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 3);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 5);
+        // b) i)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 2., 0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0., -1.), idx: PrimitiveIdx::Global(7), from: None, },
+                Vertex { value: Point3::new(0., 0., 1.5),   idx: PrimitiveIdx::Global(8), from: None, },
+            ], None, PrimitiveIdx::Global(3));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 1);
+        assert_eq!(new_tris_v.len(), 4);
+        assert_eq!(inter_tris.len(), 2);
 
-    //    // b) iii)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 2., 0.),
-    //        Point3::new(0., 0., -1.5),
-    //        Point3::new(0., 0., 1.5),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 3);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 7);
+        // b) ii)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 2., 0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0., -1.), idx: PrimitiveIdx::Global(7), from: None, },
+                Vertex { value: Point3::new(0., 0., 1.),   idx: PrimitiveIdx::Global(6), from: None, },
+            ], None, PrimitiveIdx::Global(4));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 1);
+        assert_eq!(new_tris_v.len(), 3);
+        assert_eq!(inter_tris.len(), 2);
 
-    //    // c)
-    //    let tri_v = Triangle::new([
-    //        Point3::new(0., 1.1, 0.),
-    //        Point3::new(0., 0., -1.),
-    //        Point3::new(0., 0., 1.),
-    //    ]);
-    //    assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
-    //    let (new_tris_u, split_segs) = tri_u.split_transparent(&tri_v);
-    //    assert_eq!(new_tris_u.len(), 7);
-    //    assert_eq!(tri_v.split(&split_segs).len(), 7);
-    //}
+        // b) iii)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 2., 0.),  idx: PrimitiveIdx::Global(3), from: None, },
+                Vertex { value: Point3::new(0., 0., -1.5), idx: PrimitiveIdx::Global(9), from: None, },
+                Vertex { value: Point3::new(0., 0., 1.5),   idx: PrimitiveIdx::Global(8), from: None, },
+            ], None, PrimitiveIdx::Global(5));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 1);
+        assert_eq!(new_tris_v.len(), 5);
+        assert_eq!(inter_tris.len(), 2);
+
+        // c)
+        let tri_v = IdxTriangle::new(vec![
+                Vertex { value: Point3::new(0., 1.1, 0.),  idx: PrimitiveIdx::Global(10), from: None, },
+                Vertex { value: Point3::new(0., 0., -1.), idx: PrimitiveIdx::Global(7), from: None, },
+                Vertex { value: Point3::new(0., 0., 1.),   idx: PrimitiveIdx::Global(6), from: None, },
+            ], None, PrimitiveIdx::Global(6));
+        assert_eq!(count_verts_in(&tri_u, &tri_v), 0);
+        let inter = tri_u.intersect(&tri_v)?;
+        let (new_tris_u, inter) = tri_u.split(inter)?;
+        let (new_tris_v, inter) = tri_v.split(inter)?;
+        let inter_tris: Vec<IdxTriangle> = inter.try_into().unwrap();
+        assert_eq!(new_tris_u.len(), 3);
+        assert_eq!(new_tris_v.len(), 3);
+        assert_eq!(inter_tris.len(), 4);
+        Ok(())
+    }
 
     //#[test]
     //fn test_segments_split() {
