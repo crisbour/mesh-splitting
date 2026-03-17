@@ -545,33 +545,42 @@ pub fn remesh(mut meshes: Vec<Mesh>) -> Result<Vec<Mesh>> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::BufReader;
-
+    use std::{io::BufReader, path::Path, sync::Once};
     use obj::ObjData;
-
+    use tempfile::NamedTempFile;
     use super::*;
+    use crate::save::Save;
+
+    static INIT: Once = Once::new();
+    fn init_logger() {
+        INIT.call_once(|| {
+            env_logger::Builder::from_default_env()
+                .is_test(true) // don't add timestamps
+                .try_init()
+                .ok();
+        });
+    }
 
     #[test]
     fn test_parse_obj() -> Result<()> {
+        init_logger();
         static OBJ_STR: &'static str = "
-            v 0 0 0
-            v 2 0 0
-            v 2 1 0
-            v 0 1 0
-            vn 0 0 1
+o Tank
+v 0 0 0
+v 2 0 0
+v 2 1 0
+v 0 1 0
+vn 0 0 1
+f 1//1 2//1 3//1
+f 1//1 3//1 4//1
 
-            o Tank
-            f 1//1 2//1 3//1
-            f 1//1 3//1 4//1
-
-            v 2 0.8 0
-            v 0 0.8 0
-            vn 0 0 -1
-
-            o Water
-            f 1//2 2//2 5//2
-            f 4//2 2//2 5//2
-        ";
+o Water
+v 2 0.8 0
+v 0 0.8 0
+vn 0 0 -1
+f 1//2 2//2 6//2
+f 2//2 5//2 6//2
+";
         let mut reader = BufReader::new(OBJ_STR.as_bytes());
         let obj = ObjData::load_buf(&mut reader)?;
         let (meshes, verts, norms, faces) = parse_obj(obj);
@@ -585,6 +594,23 @@ mod tests {
         println!("Resolved Meshes: {:?}", resolved_meshes.iter().map(|m| m.polygons.clone()));
 
         assert!(resolved_meshes.len() == 3, "Expected 3 meshes after remeshing, got {}", resolved_meshes.len());
+
+        assert_eq!(resolved_meshes[0].polygons.len(), 5, "Intersection mesh should have 5 triangles");
+        assert_eq!(resolved_meshes[1].polygons.len(), 3, "Tank remained mesh should have 3 triangles");
+        assert_eq!(resolved_meshes[2].polygons.len(), 0, "Water surface is contained within the tank surface");
+
+
+        // Rexport the meshes to buffer and print to screen
+        let infile = NamedTempFile::new().expect("Expected Temporary file to write test spectrum");
+        let tmp_path_str = infile.path().to_str().unwrap().to_string();
+        println!("Re-export the mesh to {}", tmp_path_str);
+
+        resolved_meshes.save_data(Path::new(&tmp_path_str))?;
+
+        // Read the re-exported file and print to screen
+        //let re_exported_str = std::fs::read_to_string(infile.path())?;
+        //println!("Re-exported OBJ:\n{}", re_exported_str);
+
         Ok(())
     }
 

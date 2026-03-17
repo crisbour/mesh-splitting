@@ -48,8 +48,7 @@
             cargo-edit
             cargo-watch
             netcdf
-            hdf5
-            mpich
+            meshlab
             llvmPackages.clang
             cmake # Required for static compile of NetCDF.
             cargo-flamegraph
