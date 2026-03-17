@@ -1,7 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
+use std::{cell::RefCell, collections::{BTreeMap, HashMap}, num::NonZero, ops::Deref, rc::Rc};
 use colored::Colorize;
 
 use anyhow::Result;
+use kiddo::{Manhattan, NearestNeighbour, float::kdtree::KdTree};
 use log::info;
 use nalgebra::{Point3, Unit, Vector3};
 use obj::ObjData;
@@ -129,6 +130,17 @@ impl Faces {
             PrimitiveIdx::Global(base_idx + i)
         }).collect()
     }
+    pub fn remap(&self, idx_rename: &BTreeMap<usize, usize>) {
+        self.faces.borrow_mut().iter_mut().for_each(|tri| {
+            tri.verts.iter_mut().for_each(|vert| {
+                if let PrimitiveIdx::Global(idx) = vert.idx {
+                    if let Some(new_idx) = idx_rename.get(&idx) {
+                        vert.idx = PrimitiveIdx::Global(*new_idx);
+                    }
+                }
+            });
+        });
+    }
 }
 
 pub fn parse_obj(
@@ -212,6 +224,28 @@ pub fn parse_obj(
             }
         })
         .collect();
+
+    // Build k-d tree from vertices
+    let mut kdtree: KdTree<f64, usize, 3, 32, u32> = KdTree::new();
+    for (idx, vert) in verts.borrow().iter().enumerate() {
+        kdtree.add(&[vert.x, vert.y, vert.z], idx);
+    }
+    // Map PrimitiveIdx::Global(idx) -> new PrimitiveIdx::Global(idx) after vertex deduplication
+    let mut vert_rename: BTreeMap<usize, usize> = BTreeMap::new();
+    for (idx, vert) in verts.borrow().iter().enumerate() {
+        if vert_rename.contains_key(&idx) {
+            continue;
+        }
+        let search_result = kdtree.nearest_n_within::<Manhattan>(&[vert.x, vert.y, vert.z], 1e-6, NonZero::new(10).unwrap(), true);
+        for &NearestNeighbour{item: dup_idx, ..} in search_result.iter() {
+            if dup_idx != idx {
+                vert_rename.insert(dup_idx, idx);
+            }
+        }
+    }
+    faces.remap(&vert_rename);
+    println!("Vertices remaped: {:?}", vert_rename.len());
+
     (meshes, verts, norms, faces)
 }
 
