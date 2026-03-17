@@ -1,7 +1,7 @@
 use core::f64;
 use std::collections::HashSet;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use log::trace;
 use nalgebra::Point3;
 use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxEdge, IdxIntersection, Polygon, PrimitiveIdx, Vertex}};
@@ -79,7 +79,7 @@ impl Segment {
         let (alpha_u, alpha_v) = self.intersect_unchecked(&other)?;
 
         if alpha_u < 0.0 || alpha_u > 1.0 || alpha_v < 0.0 || alpha_v > 1.0 {
-            trace!("Segments do not intersect within their lengths. alpha_self: {}, alpha_other: {}", alpha_u, alpha_v);
+            //trace!("Segments do not intersect within their lengths. alpha_self: {}, alpha_other: {}", alpha_u, alpha_v);
             return None;
         }
 
@@ -108,7 +108,7 @@ impl Segment {
         let (alpha_u, alpha_v) = self.intersect_unchecked(&other)?;
 
         if alpha_u < 0.0 || alpha_u > 1.0 || alpha_v < -eps || alpha_v > 1.0 + eps {
-            trace!("Segments do not intersect within their lengths. alpha_self: {}, alpha_other: {}", alpha_u, alpha_v);
+            //trace!("Segments do not intersect within their lengths. alpha_self: {}, alpha_other: {}", alpha_u, alpha_v);
             return None;
         }
 
@@ -209,8 +209,9 @@ impl SplitEdges {
     }
     /// Triangulate the polygon formed by the outer edges, and add the resulting segments to the SplitEdges
     ///   - WARN: This works only if outer edges describe a convex polygon
-    pub fn triangulate(&self) -> Self {
-        let convex_polygon = Polygon::try_from(self.outer_edges().clone()).expect("Outer edges must form a valid polygon for triangulation");
+    pub fn triangulate(&self) -> Result<Self> {
+        let convex_polygon = Polygon::try_from(self.outer_edges().clone())
+            .context("Outer edges must form a valid polygon for triangulation")?;
 
         let triangles = convex_polygon.triangulate();
 
@@ -223,10 +224,10 @@ impl SplitEdges {
                 }
             }
         }
-        Self {
+        Ok(Self {
             edges,
             outer: self.outer.clone(),
-        }
+        })
     }
     pub fn is_empty(&self) -> bool {
         self.edges.is_empty()
@@ -401,14 +402,14 @@ impl TryFrom<SplitEdges> for Vec<IdxTriangle> {
         trace!("Form triangles from: {:?}",
             edges
                 .iter()
-                .map(|e| Into::<IdxEdge>::into(e.clone()))
+                .map(|e| IdxEdge::try_from(e.clone()))
                 .collect::<Vec<_>>()
         );
         let mut idx = 0;
         // NOTE: Unwrap IdxEdge to circumvent the property that Eq can't check for PrimitiveIdx::Local
         let mut edge_set: HashSet<(PrimitiveIdx, PrimitiveIdx)> = HashSet::new();
         for edge in edges.iter() {
-            let idx_edge: IdxEdge = edge.clone().into();
+            let idx_edge: IdxEdge = edge.clone().try_into()?;
             edge_set.insert(idx_edge.unwrap());
         }
         let verts = Vertex::from_edges(&edges);

@@ -1,6 +1,6 @@
 use std::{hash::Hash, ops::Deref};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use nalgebra::{Point3, Unit, Vector3};
 
 use crate::IdxTriangle;
@@ -21,7 +21,11 @@ impl Eq for Edge {}
 impl Edge {
     pub fn new(v1: Vertex, v2: Vertex) -> Self {
         assert!(v1.idx != v2.idx, "Edge cannot have ends with the same vertex index: {:?}", v1.idx);
-        Edge(v1, v2)
+        if v1.idx < v2.idx {
+            Edge(v1, v2)
+        } else {
+            Edge(v2, v1)
+        }
     }
     pub fn from_idx(idx_edge: IdxEdge, verts: &Vec<Point3<f64>>) -> Self {
         Edge(
@@ -54,9 +58,10 @@ impl IdxEdge {
     }
 }
 
-impl From<Edge> for IdxEdge {
-    fn from(edge: Edge) -> Self {
-        IdxEdge::new(edge.0.idx, edge.1.idx).expect("Failed to create IdxEdge from Edge")
+impl TryFrom<Edge> for IdxEdge {
+    type Error = anyhow::Error;
+    fn try_from(edge: Edge) -> Result<Self> {
+        Ok(IdxEdge::new(edge.0.idx, edge.1.idx).context("Failed to create IdxEdge from Edge")?)
     }
 }
 
@@ -287,6 +292,13 @@ impl Polygon {
     }
 
     pub fn triangulate(&self) -> Vec<IdxTriangle> {
+        if self.verts.len() == 0 {
+            return Vec::new();
+        } else if self.verts.len() < 3 {
+            panic!("Polygon must have at least 3 vertices to be triangulated, but has: {:?}",
+                self.verts.iter().map(|v| v.idx).collect::<Vec<_>>()
+            );
+        }
         let mut triangles = Vec::new();
         let mut idx = 0;
         for i in 1..(self.verts.len() - 1) {

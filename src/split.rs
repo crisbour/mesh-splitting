@@ -1,4 +1,5 @@
 use crate::collide::Collide;
+use anyhow::Result;
 
 pub trait Split<T, P>: Collide<T>
 where
@@ -7,9 +8,9 @@ where
     type Inst;
     // Using the intersection primitives, split object that forms the difference between the
     // original object and the one intersected with
-    fn split(&self, other: P) -> (Self::Inst, P);
+    fn split(&self, other: P) -> Result<(Self::Inst, P)>;
 
     // Find the intersection between two objects and return the primitives that described the
     // intersection
-    fn intersect(&self, other: &T) -> P;
+    fn intersect(&self, other: &T) -> Result<P>;
 }

@@ -1,9 +1,10 @@
 use std::{cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
+use colored::Colorize;
 
 use anyhow::Result;
 use log::info;
 use nalgebra::{Point3, Unit, Vector3};
-use obj::Obj;
+use obj::ObjData;
 
 use crate::{
     Collide, IdxTriangle, Split, SplitEdges,
@@ -131,15 +132,14 @@ impl Faces {
 }
 
 pub fn parse_obj(
-    obj: Obj,
+    obj_data: ObjData,
 ) -> (Vec<Mesh>, Verts, Norms, Faces) {
-    let verts = Verts::with_capacity(obj.data.position.len());
-    let norms = Norms::with_capacity(obj.data.normal.len());
+    let verts = Verts::with_capacity(obj_data.position.len());
+    let norms = Norms::with_capacity(obj_data.normal.len());
     let faces = Faces::new();
 
     let allocated_verts_idx = verts.allocate_iter(
-        obj
-        .data
+        obj_data
         .position
         .iter()
         .map(|vs| {
@@ -150,8 +150,7 @@ pub fn parse_obj(
     println!("Allocated verts idx: {:?}", allocated_verts_idx);
 
     let allocated_norms_idx = norms.allocate_iter(
-        obj
-        .data
+        obj_data
         .normal
         .iter()
         .map(|vs| {
@@ -163,7 +162,7 @@ pub fn parse_obj(
     println!("Allocated norms idx: {:?}", allocated_norms_idx);
 
     let meshes =
-    obj.data
+        obj_data
         .objects
         .iter()
         .enumerate()
@@ -309,12 +308,13 @@ impl Collide<Mesh> for Mesh {
     }
 }
 
+// TODO: Replace asserts with Err
 impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
     type Inst = Mesh;
-    fn intersect(&self, other: &Mesh) -> Vec<FaceIntersection> {
+    fn intersect(&self, other: &Mesh) -> Result<Vec<FaceIntersection>> {
         // If there is no intersection, no point to proceed with checking pairwise triangles
         if !self.overlap(other) {
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
         //  Extract the triangles from mesh, keeping track of their idx for regrouping
@@ -350,7 +350,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
                 if tri_u.tri().overlap(&tri_v.tri()) {
                     info!("Intersect triangles {:?} and {:?} from meshes {:?} and {:?}",
                         idx_tri_u, idx_tri_v, self.idx, other.idx);
-                    let new_intersection = tri_u.intersect(tri_v);
+                    let new_intersection = tri_u.intersect(tri_v)?;
                     assert!(
                         !new_intersection.edges.is_empty(),
                         "Intersection of overlapping triangles should not be empty"
@@ -363,10 +363,10 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
                 }
             }
         }
-        intersections
+        Ok(intersections)
     }
 
-    fn split(&self, other: Vec<FaceIntersection>) -> (Mesh, Vec<FaceIntersection>) {
+    fn split(&self, other: Vec<FaceIntersection>) -> Result<(Mesh, Vec<FaceIntersection>)> {
         let tri_u_union: Vec<_> = self
             .polygons
             .iter()
@@ -432,7 +432,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
                 new_mesh.push(vec![tri_u.clone()]);
             } else {
                 // Split the triangle with the splits, and push to the new mesh
-                let (mut new_tris_u, _splits) = tri_u.split(splits);
+                let (mut new_tris_u, _splits) = tri_u.split(splits)?;
 
                 // Rename norms in new_tris_u, mapping to the allocated global idx
                 // WARN: Normals are likely to be duplicates for curved surface, but they should only affect the exported format
@@ -462,6 +462,49 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
             })
             .collect();
 
-        (new_mesh, new_face_inters)
+        Ok((new_mesh, new_face_inters))
     }
+}
+
+pub fn remesh(mut meshes: Vec<Mesh>) -> Result<Vec<Mesh>> {
+    info!("Start splitting meshes");
+    for mesh in &meshes {
+        println!(" > Mesh: {}", mesh.name.blue());
+    }
+
+    let mut resolved_meshes = Vec::new();
+    let mut idx = meshes.len();
+    for i in 0..meshes.len() {
+        for j in i+1..meshes.len() {
+            let mesh_a = &meshes[i];
+            let mesh_b = &meshes[j];
+            info!("Mesh {} and {} overlap: {}", mesh_a.name, mesh_b.name, mesh_a.overlap(mesh_b));
+            let inter = mesh_a.intersect(mesh_b)?;
+            info!("Mesh {} and {} intersection: {:?}", mesh_a.name, mesh_b.name, inter);
+            let (new_mesh_a, inter) = mesh_a.split(inter)?;
+            let (new_mesh_b, inter) = mesh_b.split(inter)?;
+            if !inter.is_empty() {
+                let mut inter_mesh = Mesh {
+                    name: format!("{}-{}", mesh_a.name, mesh_b.name),
+                    idx: PrimitiveIdx::Global(idx),
+                    polygons: Vec::new(),
+                    verts: mesh_a.verts.clone(),
+                    norms: mesh_a.norms.clone(),
+                    faces: mesh_a.faces.clone(),
+                };
+                for tri_inter in inter.into_iter() {
+                    // WARN: Information is lost about the normals in the intersection, need to
+                    // propagate them from the source triangles
+                    inter_mesh.push(tri_inter.try_into()?);
+                };
+                resolved_meshes.push(inter_mesh);
+                idx += 1;
+            }
+            meshes[i] = new_mesh_a;
+            meshes[j] = new_mesh_b;
+        }
+        resolved_meshes.push(meshes[i].clone());
+    }
+
+    Ok(resolved_meshes)
 }
