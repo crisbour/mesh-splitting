@@ -1,25 +1,23 @@
 use std::env::args;
 use std::path::PathBuf;
+use std::time::Instant;
 use colored::Colorize;
 
 use anyhow::Result;
-use log::info;
-use mesh_splitting::mesh::Mesh;
-use mesh_splitting::mesh::remesh;
-use mesh_splitting::primitives::PrimitiveIdx;
 use obj::Obj;
 
 use mesh_splitting::mesh::parse_obj;
+use mesh_splitting::mesh::remesh;
 use mesh_splitting::Save;
-use mesh_splitting::Collide;
-use mesh_splitting::Split;
 
 fn main() -> Result<()> {
     env_logger::init();
 
-    let obj = Obj::load("./test/Remesh.obj")?;
 
-    //println!("{:?}", obj);
+    //let obj = Obj::load("./test/Remesh.obj")?;
+    let obj = Obj::load("./test/WaterTank.obj")?;
+
+    let now = Instant::now();
 
     let (meshes, verts, norms, faces) = parse_obj(obj.data);
     //let (meshes, ..) = parse_obj(obj);
@@ -33,6 +31,8 @@ fn main() -> Result<()> {
     }
 
     let resolved_meshes = remesh(meshes)?;
+
+    println!("Remeshed in {} seconds", now.elapsed().as_secs_f64());
 
     let output_dir: PathBuf = args().nth(1).unwrap_or("./test/".to_string()).into();
 
