@@ -6,8 +6,9 @@ use mesh_splitting::mesh::parse_obj;
 use mesh_splitting::mesh::remesh;
 
 #[library_benchmark]
-fn bench_remesh_water_tank() {
-    let path = format!("{}/test/WaterTank.obj", env!("CARGO_MANIFEST_DIR"));
+#[benches::multiple("test/WaterTank.obj", "test/Remesh.obj")]
+fn bench_remesh_water_tank(path: &str) {
+    let path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), path);
     let obj = Obj::load(black_box(&path)).expect("Failed to load OBJ file");
     //let obj = Obj::load(black_box("./test/WaterTank.obj")).expect("Failed to load OBJ file");
     let (meshes, _verts, _norms, _faces) = parse_obj(obj.data);
