@@ -27,14 +27,19 @@ fn mesh_to_obj(mesh: &Mesh) -> Result<Object> {
         })
         .map(|idx| &faces_ref[idx])
         .map(|tri| {
-            let verts = tri.verts
+            // FIXME: Vertices order describes the winding order of the triangle.
+            // List them in the ordered described by the right screw by the surface normal
+            //let e1 = verts[1] - vert[0];
+            //let e2 = verts[2] - vert[1];
+            //let plane_vec = e1.cross(&e2);
+            let verts: [usize; 3] = tri.verts
                 .map(|vert| match vert.idx {
                     PrimitiveIdx::Local(_) => {
                         panic!("Expected global indices for export, found: {:?}", tri.verts);
                     },
                     PrimitiveIdx::Global(idx) => idx,
                 });
-            let norms = tri.norms
+            let norms: Option<[usize; 3]> = tri.norms
                 .map(|norms|
                     norms.map(|norm| match norm.idx {
                         PrimitiveIdx::Local(_) => {
@@ -49,9 +54,15 @@ fn mesh_to_obj(mesh: &Mesh) -> Result<Object> {
             };
             (verts, norm_options)
         })
-        .map(|(verts, norms)| SimplePolygon(
-            verts.iter().zip(norms).map(|(vert, norm)| IndexTuple(*vert, None, norm)).collect()
-        ))
+        .map(|(verts, norms)| {
+            SimplePolygon(
+                verts
+                    .iter()
+                    .zip(norms)
+                    .map(|(vert, norm)| IndexTuple(*vert, None, norm))
+                    .collect::<Vec<_>>()
+            )
+        })
         .collect();
 
     object.groups.push(group);

@@ -3,7 +3,7 @@ use colored::Colorize;
 
 use anyhow::Result;
 use kiddo::{Manhattan, NearestNeighbour, float::kdtree::KdTree};
-use log::{debug, info};
+use log::{debug, info, trace};
 use nalgebra::{Point3, Unit, Vector3};
 use obj::ObjData;
 
@@ -113,7 +113,7 @@ impl Faces {
         Self { faces }
     }
     // FIXME: Allocate size should increase capacity, not resize and initialize to default
-    pub fn alllocate_size(&self, size: usize) {
+    pub fn allocate_size(&self, size: usize) {
         let current_size = self.faces.borrow().len();
         self.faces.borrow_mut().resize(current_size + size, IdxTriangle::default());
     }
@@ -225,7 +225,7 @@ pub fn parse_obj(
 
     // Vertex deduplication, and remap the vertex idx in faces accordingly
     let verts_remap = prune_verts(&verts, &faces);
-    debug!("Vertices remaped: {:?}", verts_remap.len());
+    info!("Vertices remaped: {:?}", verts_remap.len());
 
     (meshes, verts, norms, faces)
 }
@@ -242,7 +242,9 @@ pub fn prune_verts(verts: &Verts, faces: &Faces) -> BTreeMap<usize, usize> {
         if vert_rename.contains_key(&idx) {
             continue;
         }
-        let search_result = kdtree.nearest_n_within::<Manhattan>(&[vert.x, vert.y, vert.z], 1e-6, NonZero::new(10).unwrap(), true);
+        // FIXME: Make the distance threshold for deduplication proportional to the size of the
+        // scene
+        let search_result = kdtree.nearest_n_within::<Manhattan>(&[vert.x, vert.y, vert.z], 1e-9, NonZero::new(10).unwrap(), true);
         for &NearestNeighbour{item: dup_idx, ..} in search_result.iter() {
             if dup_idx != idx {
                 vert_rename.insert(dup_idx, idx);
@@ -427,7 +429,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
                 // FIXME: Would be better to have a collision tree checking here instead of
                 // brute force pairwise collision tests
                 if tri_u.tri().overlap(&tri_v.tri()) {
-                    info!("Intersect triangles {:?} and {:?} from meshes {:?} and {:?}",
+                    debug!("Intersect triangles {:?} and {:?} from meshes {:?} and {:?}",
                         idx_tri_u, idx_tri_v, self.idx, other.idx);
                     let new_intersection = tri_u.intersect(tri_v)?;
                     assert!(
@@ -558,9 +560,13 @@ pub fn remesh(mut meshes: Vec<Mesh>) -> Result<Vec<Mesh>> {
         for j in i+1..meshes.len() {
             let mesh_a = &meshes[i];
             let mesh_b = &meshes[j];
-            info!("Mesh {} and {} overlap: {}", mesh_a.name, mesh_b.name, mesh_a.overlap(mesh_b));
+            if mesh_a.overlap(mesh_b) {
+                info!("Mesh {} and {} overlap", mesh_a.name, mesh_b.name);
+            } else {
+                continue;
+            }
             let inter = mesh_a.intersect(mesh_b)?;
-            info!("Mesh {} and {} intersection: {:?}", mesh_a.name, mesh_b.name, inter);
+            trace!("Mesh {} and {} intersection: {:?}", mesh_a.name, mesh_b.name, inter);
             let (new_mesh_a, inter) = mesh_a.split(inter)?;
             let (new_mesh_b, inter) = mesh_b.split(inter)?;
             if !inter.is_empty() {

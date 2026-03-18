@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use assert_approx_eq::assert_approx_eq;
-use log::{info, trace, warn};
+use log::{info, debug, trace, warn};
 use nalgebra::{Point3, Unit, Vector3};
 
 use crate::{
@@ -736,7 +736,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
         let split_convex_polygon = SplitEdges::new(other.intersect(&new_edges)?)
             .triangulate()?;
 
-        info!(
+        debug!(
             "Intersection edges: {:?} with outer: {:?}",
             split_convex_polygon
                 .edges
@@ -974,7 +974,7 @@ impl Split<IdxTriangle, SplitEdges> for IdxTriangle {
             }
         }
 
-        info!(
+        debug!(
             "Diff triangles: {:?}",
             tris_diff_vec
                 .iter()

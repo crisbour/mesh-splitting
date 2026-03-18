@@ -1,4 +1,5 @@
 use std::env::args;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 use colored::Colorize;
@@ -13,9 +14,10 @@ use mesh_splitting::Save;
 fn main() -> Result<()> {
     env_logger::init();
 
+    let obj_filepath = args().nth(1).unwrap_or("./test/WaterTank.obj".to_string());
 
     //let obj = Obj::load("./test/Remesh.obj")?;
-    let obj = Obj::load("./test/WaterTank.obj")?;
+    let obj = Obj::load(&obj_filepath)?;
 
     let now = Instant::now();
 
@@ -34,7 +36,10 @@ fn main() -> Result<()> {
 
     println!("Remeshed in {} seconds", now.elapsed().as_secs_f64());
 
-    let output_dir: PathBuf = args().nth(1).unwrap_or("./test/".to_string()).into();
+   let output_dir: PathBuf = Path::new(&obj_filepath)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
 
     println!("Re-export the mesh to re-export_meshes.obj");
     resolved_meshes.save(&output_dir.join("re-export_meshes.obj"))?;
