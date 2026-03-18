@@ -1,11 +1,11 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
 };
 
 use anyhow::{Context, Result, anyhow};
 use assert_approx_eq::assert_approx_eq;
-use log::{info, debug, trace, warn};
+use log::{debug, trace, warn};
 use nalgebra::{Point3, Unit, Vector3};
 
 use crate::{
@@ -50,12 +50,13 @@ impl Display for IdxTriangle {
 
 impl IdxTriangle {
     // TODO: Maybe need the parameters to be [T; 3], such that compiler checks the lengths instead
-    pub fn new(verts: Vec<Vertex>, norms: Option<Vec<Normal>>, idx: PrimitiveIdx) -> Self {
+    pub fn new(verts: [Vertex; 3], norms: Option<[Normal; 3]>, idx: PrimitiveIdx) -> Self {
         assert!(
             verts.len() == 3,
             "Expected exactly 3 vertices to construct a triangle"
         );
-        let verts: [Vertex; 3] = verts.try_into().unwrap();
+
+        // Check if this is a flat surface triangle or curved surface
         let mut flat = true;
         if let Some(ref idx_norms) = norms {
             assert!(
@@ -64,22 +65,40 @@ impl IdxTriangle {
             );
             if idx_norms[0].idx == idx_norms[1].idx && idx_norms[1].idx == idx_norms[2].idx {
                 flat = true;
+            } else {
+                flat = false;
             }
         }
-        let tri_verts = verts.map(|vert| vert.value);
+
+        let mut verts: [Vertex; 3] = verts.try_into().unwrap();
+
+        // Generate primitive Triangle to be cached by IdxTriangle for collision checks
         let tri = if let Some(ref idx_norms) = norms {
             let plane_norm = Dir3::new_normalize(
                 idx_norms
                     .iter()
                     .fold(Vector3::zeros(), |acc, &norm| acc + norm.value.into_inner()),
             );
+
+            // Check that winding from vertices order agrees with the surface normal
+            let e1 = verts[1].value - verts[0].value;
+            let e2 = verts[2].value - verts[0].value;
+            let winding_vec = e1.cross(&e2);
+            let switch_winding = winding_vec.dot(&plane_norm) <= 0.0;
+            if switch_winding {
+                debug!("Switch winding order for triangle {:?}", idx);
+                verts.reverse();
+            }
+            let tri_verts = verts.map(|vert| vert.value);
+
             Triangle::new_with_norm(&tri_verts, plane_norm)
         } else {
+            let tri_verts = verts.map(|vert| vert.value);
             Triangle::new(&tri_verts)
         };
         IdxTriangle {
             idx,
-            verts: [verts[0], verts[1], verts[2]],
+            verts,
             norms: norms.map(|n| [n[0], n[1], n[2]]),
             tri,
             flat,
@@ -188,58 +207,111 @@ impl IdxTriangle {
         Ok(Dir3::new_normalize(norm_value))
     }
 
+    /// Compute norms if they exist in the original triangle
+    fn new_norms(&self, verts: &[Vertex; 3], norm_idx: &mut usize) -> Option<[Normal; 3]> {
+        let norms = if let Some(ref idx_norms) = self.norms {
+            if self.flat {
+                // If the original triangle is flat, we can directly assign the same normal to all new triangles without interpolation
+                Some([idx_norms[0], idx_norms[1], idx_norms[2]])
+            } else {
+                // Norms for all vertices in triangle `tri`
+                let norms = verts.map(|v| {
+                    if self.verts.contains(&v) {
+                        // If the vertex of the new triangle matches one of the original triangle vertices, we can directly use the corresponding normal without interpolation
+                        let vert_idx =
+                            self.verts.iter().position(|&orig_v| orig_v == v).unwrap();
+                        idx_norms[vert_idx]
+                    } else {
+                        // Populate norms based on barycentric coordinates interpolation
+                        let bc = self.barycentric_coords(&v.value).unwrap();
+                        let norm = Normal {
+                            value: self.dir_at(bc).unwrap(),
+                            idx: PrimitiveIdx::Local(*norm_idx),
+                        };
+                        *norm_idx += 1;
+                        norm
+                    }
+                });
+                Some(norms)
+            }
+        } else {
+            None
+        };
+        norms
+    }
+
     pub fn from_edges(&self, edges: Vec<Edge>) -> Result<Vec<IdxTriangle>> {
         if edges.is_empty() {
             return Ok(Vec::new());
         }
 
-        // Group edges to form triangles
-        let mut split_edges = SplitEdges::new(vec![]);
-        split_edges.edges.extend(edges);
-        let mut tris: Vec<IdxTriangle> = split_edges.try_into()?;
-
-        // Compute norms if they exist in the original triangle
-        if let Some(ref idx_norms) = self.norms {
-            if self.flat {
-                // If the original triangle is flat, we can directly assign the same normal to all new triangles without interpolation
-                for tri in tris.iter_mut() {
-                    tri.norms = Some([idx_norms[0], idx_norms[1], idx_norms[2]]);
-                }
-                return Ok(tris);
-            }
-
-            let mut norm_idx = 0;
-            let tris_norms: Vec<_> = tris
+        trace!("Form triangles from: {:?}",
+            edges
                 .iter()
-                .map(|tri| {
-                    // Norms for all vertices in triangle `tri`
-                    let norms = tri.verts.map(|v| {
-                        if self.verts.contains(&v) {
-                            // If the vertex of the new triangle matches one of the original triangle vertices, we can directly use the corresponding normal without interpolation
-                            let vert_idx =
-                                self.verts.iter().position(|&orig_v| orig_v == v).unwrap();
-                            idx_norms[vert_idx]
-                        } else {
-                            // Populate norms based on barycentric coordinates interpolation
-                            let bc = self.barycentric_coords(&v.value).unwrap();
-                            let norm = Normal {
-                                value: self.dir_at(bc).unwrap(),
-                                idx: PrimitiveIdx::Local(norm_idx),
-                            };
-                            norm_idx += 1;
-                            norm
-                        }
-                    });
-                    norms
-                })
-                .collect();
+                .map(|e| IdxEdge::try_from(e.clone()))
+                .collect::<Vec<_>>()
+        );
 
-            // Assign norms to the triangles
-            for (tri, norms) in tris.iter_mut().zip(tris_norms) {
-                tri.norms = Some(norms);
+        let mut norm_idx = 0;
+        let mut idx = 0;
+
+        // NOTE: Unwrap IdxEdge to circumvent the property that Eq can't check for PrimitiveIdx::Local
+        let mut edge_set: HashSet<(PrimitiveIdx, PrimitiveIdx)> = HashSet::new();
+        for edge in edges.iter() {
+            let idx_edge: IdxEdge = edge.clone().try_into()?;
+            edge_set.insert(idx_edge.unwrap());
+        }
+        let verts = Vertex::from_edges(&edges);
+        let mut tris = Vec::new();
+
+        // Group edges to form triangles
+        // -----------------------------------------
+        for i in 0..verts.len() {
+            for j in (i + 1)..verts.len() {
+                for k in (j + 1)..verts.len() {
+                    let v1 = verts[i];
+                    let v2 = verts[j];
+                    let v3 = verts[k];
+                    let e1 = IdxEdge::new(v1.idx, v2.idx)?;
+                    let e2 = IdxEdge::new(v2.idx, v3.idx)?;
+                    let e3 = IdxEdge::new(v3.idx, v1.idx)?;
+                    if edge_set.contains(&e1.unwrap()) && edge_set.contains(&e2.unwrap()) && edge_set.contains(&e3.unwrap())
+                    {
+                        let norms = self.new_norms(&[v1, v2, v3], &mut norm_idx);
+                        tris.push(IdxTriangle::new(
+                            [v1, v2, v3],
+                            norms,
+                            PrimitiveIdx::Local(idx),
+                        ));
+                        idx += 1;
+                    }
+                }
             }
         }
-
+        // Prune triangles that include vertices => The triangle is already described by other
+        // finner grained triangles
+        let mut i = 0;
+        while i < tris.len() {
+            let tri = &tris[i];
+            let mut clash = false;
+            for vert in verts.iter() {
+                if tri.tri().vertex_in(vert.value) {
+                    trace!(
+                        "Vertex {:?} is inside triangle {:?}, removing triangle.",
+                        vert,
+                        tri.verts.map(|v| *v.idx)
+                    );
+                    clash = true;
+                    break;
+                }
+            }
+            if clash {
+                tris.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        // TODO: Check that all edges are used
         Ok(tris)
     }
 
@@ -354,7 +426,8 @@ impl TryFrom<Polygon> for IdxTriangle {
             ))
         } else {
             Ok(IdxTriangle::new(
-                poly.verts,
+                // FIXME: How to handle a different error into anyhow
+                poly.verts.try_into().unwrap(),
                 None,
                 PrimitiveIdx::Local(usize::MAX),
             ))

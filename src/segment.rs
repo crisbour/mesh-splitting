@@ -1,10 +1,9 @@
 use core::f64;
-use std::collections::HashSet;
 
 use anyhow::{Context, Result};
 use log::trace;
 use nalgebra::Point3;
-use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxEdge, IdxIntersection, Polygon, PrimitiveIdx, Vertex}};
+use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxIntersection, Polygon, PrimitiveIdx, Vertex}};
 
 #[derive(Debug)]
 pub struct Segment {
@@ -392,77 +391,6 @@ impl From<Vec<IdxTriangle>> for SplitEdges {
     }
 }
 
-impl TryFrom<SplitEdges> for Vec<IdxTriangle> {
-    type Error = anyhow::Error;
-    fn try_from(split_edges: SplitEdges) -> Result<Self> {
-        let edges = &split_edges.edges;
-        if edges.is_empty() {
-            return Ok(Vec::new());
-        }
-        trace!("Form triangles from: {:?}",
-            edges
-                .iter()
-                .map(|e| IdxEdge::try_from(e.clone()))
-                .collect::<Vec<_>>()
-        );
-        let mut idx = 0;
-        // NOTE: Unwrap IdxEdge to circumvent the property that Eq can't check for PrimitiveIdx::Local
-        let mut edge_set: HashSet<(PrimitiveIdx, PrimitiveIdx)> = HashSet::new();
-        for edge in edges.iter() {
-            let idx_edge: IdxEdge = edge.clone().try_into()?;
-            edge_set.insert(idx_edge.unwrap());
-        }
-        let verts = Vertex::from_edges(&edges);
-        let mut triangles = Vec::new();
-        for i in 0..verts.len() {
-            for j in (i + 1)..verts.len() {
-                for k in (j + 1)..verts.len() {
-                    let v1 = verts[i];
-                    let v2 = verts[j];
-                    let v3 = verts[k];
-                    let e1 = IdxEdge::new(v1.idx, v2.idx)?;
-                    let e2 = IdxEdge::new(v2.idx, v3.idx)?;
-                    let e3 = IdxEdge::new(v3.idx, v1.idx)?;
-                    if edge_set.contains(&e1.unwrap()) && edge_set.contains(&e2.unwrap()) && edge_set.contains(&e3.unwrap())
-                    {
-                        triangles.push(IdxTriangle::new(
-                            vec![v1, v2, v3],
-                            //self.norms.map(|n| vec![n[i], n[j], n[k]]),
-                            None,
-                            PrimitiveIdx::Local(idx),
-                        ));
-                        idx += 1;
-                    }
-                }
-            }
-        }
-        // Prune triangles that include vertices => The triangle is already described by other
-        // finner grained triangles
-        let mut i = 0;
-        while i < triangles.len() {
-            let tri = &triangles[i];
-            let mut clash = false;
-            for vert in verts.iter() {
-                if tri.tri().vertex_in(vert.value) {
-                    trace!(
-                        "Vertex {:?} is inside triangle {:?}, removing triangle.",
-                        vert,
-                        tri.verts.map(|v| *v.idx)
-                    );
-                    clash = true;
-                    break;
-                }
-            }
-            if clash {
-                triangles.remove(i);
-            } else {
-                i += 1;
-            }
-        }
-        // TODO: Check that all edges are used
-        Ok(triangles)
-    }
-}
 
 impl Collide<SplitEdges> for IdxTriangle {
     fn overlap(&self, other: &SplitEdges) -> bool {

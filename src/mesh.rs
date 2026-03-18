@@ -184,19 +184,22 @@ pub fn parse_obj(
                 .iter()
                 .flat_map(|group| {
                     group.polys.iter().map(|poly| {
-                        let tri_verts: Vec<_> = poly
+                        let tri_verts: [Vertex; 3] = poly
                             .0
                             .iter()
                             .map(|idx_tuple| idx_tuple.0)
                             .map(|idx| Vertex::new(idx, &verts.borrow()))
-                            .collect();
+                            .collect::<Vec<_>>()
+                            .try_into()
+                            .unwrap();
                         //let t_idx = poly.0.map(|idx_tuple| idx_tuple.1);
-                        let tri_norms: Option<Vec<_>> = poly
+                        let tri_norms: Option<[Normal; 3]> = poly
                             .0
                             .iter()
                             .map(|idx_tuple| idx_tuple.2)
                             .map(|idx| idx.map(|i| Normal::new(i, &norms.borrow())))
-                            .collect();
+                            .collect::<Option<Vec<_>>>()
+                            .and_then(|v| v.try_into().ok());
                         (tri_verts, tri_norms)
                     })
                 })
@@ -320,6 +323,14 @@ impl FaceIntersection {
     pub fn rename_vertices(&mut self, idx_alloc_map: &HashMap<IdxIntersection, PrimitiveIdx>) {
         self.split_edges.rename_vertices(idx_alloc_map);
     }
+    pub fn into_tris(self, faces: &Faces) -> Result<Vec<IdxTriangle>> {
+        let tri_u_idx = match self.tri_u {
+            PrimitiveIdx::Local(_) => panic!("Expected global indices for face intersection triangles, found: {:?}", self.tri_u),
+            PrimitiveIdx::Global(idx) => idx,
+        };
+        let tri_u = &faces.borrow()[tri_u_idx];
+        tri_u.from_edges(self.split_edges.edges)
+    }
 }
 
 impl PartialEq for FaceIntersection {
@@ -341,13 +352,6 @@ impl Ord for FaceIntersection {
 impl PartialOrd for FaceIntersection {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-impl TryInto<Vec<IdxTriangle>> for FaceIntersection {
-    type Error = anyhow::Error;
-    fn try_into(self) -> Result<Vec<IdxTriangle>> {
-        self.split_edges.try_into()
     }
 }
 
@@ -582,7 +586,7 @@ pub fn remesh(mut meshes: Vec<Mesh>) -> Result<Vec<Mesh>> {
                 for tri_inter in inter.into_iter() {
                     // WARN: Information is lost about the normals in the intersection, need to
                     // propagate them from the source triangles
-                    inter_mesh.push(tri_inter.try_into()?);
+                    inter_mesh.push(tri_inter.into_tris(&mesh_a.faces)?);
                 };
                 resolved_meshes.push(inter_mesh);
                 idx += 1;

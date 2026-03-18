@@ -303,7 +303,7 @@ impl Polygon {
         let mut idx = 0;
         for i in 1..(self.verts.len() - 1) {
             triangles.push(IdxTriangle::new(
-                vec![self.verts[0], self.verts[i], self.verts[i + 1]],
+                [self.verts[0], self.verts[i], self.verts[i + 1]],
                 None,
                 PrimitiveIdx::Local(idx),
             ));

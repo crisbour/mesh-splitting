@@ -27,11 +27,6 @@ fn mesh_to_obj(mesh: &Mesh) -> Result<Object> {
         })
         .map(|idx| &faces_ref[idx])
         .map(|tri| {
-            // FIXME: Vertices order describes the winding order of the triangle.
-            // List them in the ordered described by the right screw by the surface normal
-            //let e1 = verts[1] - vert[0];
-            //let e2 = verts[2] - vert[1];
-            //let plane_vec = e1.cross(&e2);
             let verts: [usize; 3] = tri.verts
                 .map(|vert| match vert.idx {
                     PrimitiveIdx::Local(_) => {
