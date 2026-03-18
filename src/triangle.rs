@@ -6,6 +6,7 @@ type Dir3 = Unit<Vector3<f64>>;
 
 #[derive(Debug, Clone)]
 pub struct Triangle {
+    // TODO: Perhaps borrow this from parent IdxTriangle
     pub verts: [Point3<f64>; 3],
     pub plane_norm: Dir3,
 }
@@ -23,12 +24,12 @@ impl PartialEq for Triangle {
 
 impl Triangle {
 
-    pub fn new(verts: [Point3<f64>; 3]) -> Self {
-        let plane_norm = Self::init_plane_norm(&verts);
+    pub fn new(verts: &[Point3<f64>; 3]) -> Self {
+        let plane_norm = Self::init_plane_norm(verts);
         Self::new_with_norm(verts, plane_norm)
     }
 
-    pub fn new_with_norm(verts: [Point3<f64>; 3], plane_norm: Dir3) -> Self {
+    pub fn new_with_norm(verts: &[Point3<f64>; 3], plane_norm: Dir3) -> Self {
         {
             let a = verts[0] - verts[1];
             let b = verts[1] - verts[2];
@@ -38,7 +39,7 @@ impl Triangle {
                 verts
             );
         }
-        Self { verts, plane_norm }
+        Self { verts: verts.clone(), plane_norm }
     }
 
     /// Initialise the plane normal.
@@ -71,7 +72,7 @@ impl Triangle {
         let mut sign: Option<bool> = None;
 
         // 1. First check that vertex is in the plane of the triangle
-        let vertex_to_tri = vertex - self.verts[0];
+        let vertex_to_tri: Vector3<f64> = vertex - self.verts[0];
         if self.plane_norm.dot(&vertex_to_tri).abs() > 1e-9 {
             return false;
         }
@@ -112,8 +113,8 @@ impl Collide<Point3<f64>> for Triangle {
         let mut sign: Option<bool> = None;
 
         // 1. First check that vertex is in the plane of the triangle
-        let vertex_to_tri = point - self.verts[0];
-        if self.plane_norm.dot(&vertex_to_tri).abs() > 1e-9 {
+        let vertex_to_tri: Vector3<f64> = point - self.verts[0];
+        if self.plane_norm.into_inner().dot(&vertex_to_tri).abs() > 1e-9 {
             return false;
         }
 
@@ -326,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_triangle_aabb() {
-        let tri1 = Triangle::new([
+        let tri1 = Triangle::new(&[
             Point3::new(0., 0., 0.),
             Point3::new(1., 0., 0.),
             Point3::new(1., 1., 0.),
@@ -339,7 +340,7 @@ mod tests {
         assert_eq!(tri1_aabb.mins, aabb.mins);
         assert_eq!(tri1_aabb.maxs, aabb.maxs);
 
-        let tri2 = Triangle::new([
+        let tri2 = Triangle::new(&[
             Point3::new(0.8, 0.5, 0.),
             Point3::new(2.,  0.,  0.),
             Point3::new(2.,  1.,  0.)
@@ -355,7 +356,7 @@ mod tests {
 
     #[test]
     fn test_vertex_in() {
-        let tri = Triangle::new([
+        let tri = Triangle::new(&[
             Point3::new(0., 0., 0.),
             Point3::new(1., 0., 0.),
             Point3::new(1., 1., 0.),
@@ -373,12 +374,12 @@ mod tests {
 
     #[test]
     fn test_overlaping_triangles() {
-        let tri1 = Triangle::new([
+        let tri1 = Triangle::new(&[
             Point3::new(0., 0., 0.),
             Point3::new(1., 0., 0.),
             Point3::new(1., 1., 0.),
         ]);
-        let tri2 = Triangle::new([
+        let tri2 = Triangle::new(&[
             Point3::new(0., 1., 0.),
             Point3::new(1., 0., 0.),
             Point3::new(1., 1., 0.),
@@ -389,14 +390,14 @@ mod tests {
 
     #[test]
     fn test_non_overlaping_triangles() {
-        let tri1 = Triangle::new([
+        let tri1 = Triangle::new(&[
             Point3::new(0., 0., 0.),
             Point3::new(1., 0., 0.),
             Point3::new(1., 1., 0.),
         ]);
 
         // Not coplanar
-        let tri2 = Triangle::new([
+        let tri2 = Triangle::new(&[
             Point3::new(0., 1., 1.),
             Point3::new(1., 0., 1.),
             Point3::new(1., 1., 1.),
@@ -404,7 +405,7 @@ mod tests {
         assert!(!tri1.overlap(&tri2));
 
         // Coplanar but not overlapping
-        let tri2 = Triangle::new([
+        let tri2 = Triangle::new(&[
             Point3::new(0., 0.1, 0.),
             Point3::new(0., 1., 0.),
             Point3::new(0.9, 1., 0.),
@@ -412,7 +413,7 @@ mod tests {
         assert!(!tri1.overlap(&tri2));
 
         // Intersecting, but not overlapping in the same plane
-        let tri2 = Triangle::new([
+        let tri2 = Triangle::new(&[
             Point3::new(0., 0., -1.),
             Point3::new(1., 0., 1.),
             Point3::new(1., 1., 1.),

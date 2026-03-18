@@ -113,10 +113,10 @@ impl Faces {
         Self { faces }
     }
     // FIXME: Allocate size should increase capacity, not resize and initialize to default
-    pub fn allocate_size(&self, size: usize) {
-        let current_size = self.faces.borrow().len();
-        self.faces.borrow_mut().resize(current_size + size, IdxTriangle::default());
-    }
+    //pub fn allocate_size(&self, size: usize) {
+    //    let current_size = self.faces.borrow().len();
+    //    self.faces.borrow_mut().resize(current_size + size, IdxTriangle::default());
+    //}
     pub fn allocate(&self, tri: IdxTriangle) -> PrimitiveIdx {
         let idx = self.faces.borrow().len();
         self.faces.borrow_mut().push(tri);
@@ -428,7 +428,7 @@ impl Split<Mesh, Vec<FaceIntersection>> for Mesh {
             for (idx_tri_v, tri_v) in tri_v_union.iter() {
                 // FIXME: Would be better to have a collision tree checking here instead of
                 // brute force pairwise collision tests
-                if tri_u.tri().overlap(&tri_v.tri()) {
+                if tri_u.tri().overlap(tri_v.tri()) {
                     debug!("Intersect triangles {:?} and {:?} from meshes {:?} and {:?}",
                         idx_tri_u, idx_tri_v, self.idx, other.idx);
                     let new_intersection = tri_u.intersect(tri_v)?;

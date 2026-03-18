@@ -14,11 +14,12 @@ use crate::{
 
 type Dir3 = Unit<Vector3<f64>>;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct IdxTriangle {
     pub idx: PrimitiveIdx,
     pub verts: [Vertex; 3],
     pub norms: Option<[Normal; 3]>,
+    pub tri : Triangle,
     pub flat: bool,
 }
 
@@ -54,6 +55,7 @@ impl IdxTriangle {
             verts.len() == 3,
             "Expected exactly 3 vertices to construct a triangle"
         );
+        let verts: [Vertex; 3] = verts.try_into().unwrap();
         let mut flat = true;
         if let Some(ref idx_norms) = norms {
             assert!(
@@ -64,17 +66,22 @@ impl IdxTriangle {
                 flat = true;
             }
         }
-        let a = verts[0].value - verts[1].value;
-        let b = verts[1].value - verts[2].value;
-        assert!(
-            a.cross(&b).abs().sum() > f64::EPSILON,
-            "Edges of triangle can't be colinear: {:?}",
-            verts
-        );
+        let tri_verts = verts.map(|vert| vert.value);
+        let tri = if let Some(ref idx_norms) = norms {
+            let plane_norm = Dir3::new_normalize(
+                idx_norms
+                    .iter()
+                    .fold(Vector3::zeros(), |acc, &norm| acc + norm.value.into_inner()),
+            );
+            Triangle::new_with_norm(&tri_verts, plane_norm)
+        } else {
+            Triangle::new(&tri_verts)
+        };
         IdxTriangle {
             idx,
             verts: [verts[0], verts[1], verts[2]],
             norms: norms.map(|n| [n[0], n[1], n[2]]),
+            tri,
             flat,
         }
     }
@@ -118,8 +125,8 @@ impl IdxTriangle {
         Aabb{mins, maxs}
     }
 
-    pub fn tri(&self) -> Triangle {
-        self.clone().into()
+    pub fn tri(&self) -> &Triangle {
+        &self.tri
     }
 
     /// Get barycentric_coords of a point in the triangle.
@@ -249,22 +256,16 @@ impl IdxTriangle {
 
 impl Into<Triangle> for IdxTriangle {
     fn into(self) -> Triangle {
-        let tri_verts = self
-            .verts
-            .iter()
-            .map(|vert| vert.value)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        let tri_verts = self.verts.map(|vert| vert.value);
         if let Some(ref idx_norms) = self.norms {
             let plane_norm = Dir3::new_normalize(
                 idx_norms
                     .iter()
                     .fold(Vector3::zeros(), |acc, &norm| acc + norm.value.into_inner()),
             );
-            Triangle::new_with_norm(tri_verts, plane_norm)
+            Triangle::new_with_norm(&tri_verts, plane_norm)
         } else {
-            Triangle::new(tri_verts)
+            Triangle::new(&tri_verts)
         }
     }
 }
