@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn test_idx_triangle_new_and_edges() {
-        let verts = vec![
+        let verts = [
             Vertex {
                 value: Point3::new(0.0, 0.0, 0.0),
                 idx: PrimitiveIdx::Global(0),
