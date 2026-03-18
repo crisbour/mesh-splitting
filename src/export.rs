@@ -4,12 +4,6 @@ use obj::{Group, IndexTuple, Obj, ObjData, Object, SimplePolygon};
 
 use crate::{Save, mesh::Mesh, primitives::PrimitiveIdx};
 
-fn vec_to_hash(vec: &[f32;3]) -> u128 {
-    (vec[0].to_bits() as u128) << (0*32) |
-    (vec[1].to_bits() as u128) << (1*32) |
-    (vec[2].to_bits() as u128) << (2*32)
-}
-
 fn mesh_to_obj(mesh: &Mesh) -> Result<Object> {
 
     let mut object = Object::new(mesh.name.clone());
