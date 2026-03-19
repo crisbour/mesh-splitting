@@ -143,7 +143,7 @@ impl Faces {
 }
 
 pub fn parse_obj(
-    obj_data: ObjData,
+    obj_data: &ObjData,
 ) -> (Vec<Mesh>, Verts, Norms, Faces) {
     let verts = Verts::with_capacity(obj_data.position.len());
     let norms = Norms::with_capacity(obj_data.normal.len());
