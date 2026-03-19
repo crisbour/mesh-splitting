@@ -178,7 +178,7 @@ pub fn parse_obj(
         .iter()
         .enumerate()
         .map(|(idx, obj)| {
-            // NOTE: Don't support multiple groups per object
+            // NOTE: Collapse groups from an object
             let obj_faces: Vec<_> = obj
                 .groups
                 .iter()
@@ -235,7 +235,7 @@ pub fn parse_obj(
 
 pub fn prune_verts(verts: &Verts, faces: &Faces) -> BTreeMap<usize, usize> {
     // Build k-d tree from vertices
-    let mut kdtree: KdTree<f64, usize, 3, 32, u32> = KdTree::new();
+    let mut kdtree: KdTree<f64, usize, 3, 128, u32> = KdTree::new();
     for (idx, vert) in verts.borrow().iter().enumerate() {
         kdtree.add(&[vert.x, vert.y, vert.z], idx);
     }
@@ -301,6 +301,18 @@ impl Mesh {
                 .map(|(i, tri)| tri.into_global(current_size + i))
         );
         self.polygons.extend(new_polygons);
+    }
+    pub fn tris(&self) -> Vec<IdxTriangle> {
+        self.polygons
+            .iter()
+            .map(|&idx| {
+                let idx = match idx {
+                    PrimitiveIdx::Local(_) => panic!("Expected global indices for mesh polygons, found: {:?}", idx),
+                    PrimitiveIdx::Global(idx) => idx,
+                };
+                self.faces.borrow()[idx].clone()
+            })
+            .collect()
     }
 }
 
