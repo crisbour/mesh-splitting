@@ -21,7 +21,7 @@ fn main() -> Result<()> {
 
     let now = Instant::now();
 
-    let (meshes, verts, norms, faces) = parse_obj(obj.data);
+    let (meshes, verts, norms, faces) = parse_obj(&obj.data);
     //let (meshes, ..) = parse_obj(obj);
 
     println!("Verts: {}", verts.borrow().len());

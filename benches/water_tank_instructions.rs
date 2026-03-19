@@ -11,7 +11,7 @@ fn bench_remesh_water_tank(path: &str) {
     let path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), path);
     let obj = Obj::load(black_box(&path)).expect("Failed to load OBJ file");
     //let obj = Obj::load(black_box("./test/WaterTank.obj")).expect("Failed to load OBJ file");
-    let (meshes, _verts, _norms, _faces) = parse_obj(obj.data);
+    let (meshes, _verts, _norms, _faces) = parse_obj(&obj.data);
     let result = remesh(black_box(meshes.clone()));
     assert!(result.is_ok());
 }

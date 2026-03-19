@@ -652,7 +652,7 @@ f 2//2 5//2 6//2
 ";
         let mut reader = BufReader::new(OBJ_STR.as_bytes());
         let obj = ObjData::load_buf(&mut reader)?;
-        let (meshes, verts, norms, faces) = parse_obj(obj);
+        let (meshes, verts, norms, faces) = parse_obj(&obj);
 
         println!("Verts: {}", verts.borrow().len());
         println!("Norms: {}", norms.borrow().len());

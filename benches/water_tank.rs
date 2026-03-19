@@ -18,13 +18,13 @@ fn criterion_benchmark(c: &mut Criterion) {
     let obj = Obj::load("./test/WaterTank.obj").expect("Failed to load OBJ file");
     c.bench_function("parse_obj", |b| {
         b.iter(|| {
-            let (meshes, verts, norms, faces) = parse_obj(black_box(obj.data.clone()));
+            let (meshes, verts, norms, faces) = parse_obj(black_box(&obj.data));
             black_box((meshes, verts, norms, faces));
         });
     });
 
     // Benchmark remeshing
-    let (meshes, verts, norms, faces) = parse_obj(obj.data);
+    let (meshes, verts, norms, faces) = parse_obj(&obj.data);
     c.bench_function("remesh", |b| {
         b.iter(|| {
             let result = remesh(black_box(meshes.clone()));
