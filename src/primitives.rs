@@ -28,6 +28,10 @@ impl Edge {
         }
     }
     pub fn from_idx(idx_edge: IdxEdge, verts: &Vec<Point3<f64>>) -> Self {
+        assert!(matches!(idx_edge.0, PrimitiveIdx::Global(_)) && matches!(idx_edge.1, PrimitiveIdx::Global(_)),
+            "Cannot create Edge from IdxEdge {:?} with local indexing. Verts list is only indexable by global index.",
+            idx_edge
+        );
         Edge(
             Vertex::new(*idx_edge.0, verts),
             Vertex::new(*idx_edge.1, verts),
@@ -218,7 +222,7 @@ impl Hash for Vertex {
 // reliably, hence the intersection is checked instead, since `Local index |-> Intersection`
 impl PartialEq for Vertex {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx == other.idx {
+        if matches!(self.idx, PrimitiveIdx::Global(_)) && matches!(other.idx, PrimitiveIdx::Global(_)) && self.idx == other.idx {
             true
         }
         else if let Some(idx_inter_a) = self.from
@@ -360,19 +364,6 @@ mod tests {
         let v2 = Vertex {
             value: Point3::new(1.0, 0.0, 0.0),
             idx: PrimitiveIdx::Global(0),
-            from: None,
-        };
-        assert_eq!(v1, v2);
-
-        // Identity based on local index, disregarding actual position
-        let v1 = Vertex {
-            value: Point3::new(0.0, 0.0, 0.0),
-            idx: PrimitiveIdx::Local(0),
-            from: None,
-        };
-        let v2 = Vertex {
-            value: Point3::new(1.0, 0.0, 0.0),
-            idx: PrimitiveIdx::Local(0),
             from: None,
         };
         assert_eq!(v1, v2);

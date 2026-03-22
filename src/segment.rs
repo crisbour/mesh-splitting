@@ -1,9 +1,12 @@
 use core::f64;
 
+use crate::{
+    Collide, IdxTriangle, Triangle,
+    primitives::{Edge, IdxIntersection, Polygon, PrimitiveIdx, Vertex},
+};
 use anyhow::{Context, Result};
-use log::trace;
+use log::{error, trace};
 use nalgebra::Point3;
-use crate::{Collide, IdxTriangle, Triangle, primitives::{Edge, IdxIntersection, Polygon, PrimitiveIdx, Vertex}};
 
 #[derive(Debug)]
 pub struct Segment {
@@ -26,7 +29,7 @@ impl Segment {
     }
 
     pub fn parametric_dist(&self, p: &Point3<f64>) -> f64 {
-        let e = self.end -self.start;
+        let e = self.end - self.start;
         (p - self.start).dot(&e) / e.dot(&e) // alpha
     }
 
@@ -54,7 +57,7 @@ impl Segment {
         let d = u.dot(&w0); // u · (u1-v1)
         let e = v.dot(&w0); // v · (u1-v1)
 
-        let det =  a * c - b * b;
+        let det = a * c - b * b;
         if det.abs() < EPS_INTERSECT {
             return None;
         }
@@ -90,7 +93,10 @@ impl Segment {
         if p_diff.dot(&p_diff) <= EPS_INTERSECT * EPS_INTERSECT {
             Some(p_u)
         } else {
-            trace!("Closest points do not coincide. p_self: {:?}, p_other: {:?}, p_diff: {:?}", p_u, p_v, p_diff);
+            trace!(
+                "Closest points do not coincide. p_self: {:?}, p_other: {:?}, p_diff: {:?}",
+                p_u, p_v, p_diff
+            );
             None
         }
     }
@@ -118,10 +124,13 @@ impl Segment {
 
         let p_diff = p_u - p_v;
         // Check that closest points actually coincide
-        if p_diff.dot(&p_diff) <= eps*eps {
+        if p_diff.dot(&p_diff) <= eps * eps {
             Some((p_u, fuzzy))
         } else {
-            trace!("Closest points do not coincide. p_self: {:?}, p_other: {:?}, p_diff: {:?}", p_u, p_v, p_diff);
+            trace!(
+                "Closest points do not coincide. p_self: {:?}, p_other: {:?}, p_diff: {:?}",
+                p_u, p_v, p_diff
+            );
             None
         }
     }
@@ -171,7 +180,7 @@ impl Collide<Point3<f64>> for Segment {
     // FIXME: Perhaps increase EPS to allow for some numerical precision issues
     #[inline]
     fn overlap(&self, other: &Point3<f64>) -> bool {
-        let e = self.end -self.start;
+        let e = self.end - self.start;
         let alpha = (other - self.start).dot(&e) / e.dot(&e);
         let closest = self.at(alpha);
         let diff = closest - other;
@@ -216,7 +225,11 @@ impl SplitEdges {
 
         let mut edges = self.edges.clone();
         for tri in triangles {
-            let tri_edges = [Edge::new(tri.verts[0], tri.verts[1]), Edge::new(tri.verts[1], tri.verts[2]), Edge::new(tri.verts[2], tri.verts[0])];
+            let tri_edges = [
+                Edge::new(tri.verts[0], tri.verts[1]),
+                Edge::new(tri.verts[1], tri.verts[2]),
+                Edge::new(tri.verts[2], tri.verts[0]),
+            ];
             for edge in tri_edges {
                 if !edges.contains(&edge) {
                     edges.push(edge);
@@ -236,132 +249,115 @@ impl SplitEdges {
     /// such that we match segments.
     ///   - Outer edges are updated to include only those that are present in one of the sets, but
     ///   not both, hence producing boundaries even for unions of disjoint sets
+    ///   - WARN: The sets to be united must be disjoint in the areas they cover
     pub fn union(&self, other: &SplitEdges) -> SplitEdges {
         trace!("Union of SplitEdges: {:?} and {:?}", self, other);
         let mut edges = self.edges.clone();
         let mut verts = Vertex::from_edges(&edges);
         let mut outer = self.outer.clone();
+
+        // 1. Find starting local index
         let mut local_idx = 0;
         for edge in self.edges.iter() {
             match edge.0.idx {
                 PrimitiveIdx::Local(idx) => {
-                    if local_idx < idx {
-                        local_idx = idx;
+                    if local_idx <= idx {
+                        local_idx = idx+1;
                     }
-                },
+                }
                 _ => {}
             }
             match edge.1.idx {
                 PrimitiveIdx::Local(idx) => {
-                    if local_idx < idx {
-                        local_idx = idx;
+                    if local_idx <= idx {
+                        local_idx = idx+1;
                     }
-                },
+                }
                 _ => {}
             }
         }
-        for (other_pos, other_edge) in other.edges.iter().enumerate() {
-            let pos = edges.iter().position(|e| e == other_edge);
-            if let Some(pos) = pos {
-                // Edge already exists, but check that the other vertices are not higher priority
-                // i.e. self.edges vertex in Local, while the one from other.edges is Global
-                let mut replace = false;
-                let v0 = match other_edge.0.idx {
-                    PrimitiveIdx::Global(_idx) => {
-                        if matches!(edges[pos].0.idx, PrimitiveIdx::Local(_)) {
-                            trace!("Replacing edge vertex {:?} with higher priority global vertex {:?}",
-                                edges[pos].0, other_edge.0);
-                            replace = true;
+
+        // 2. Vertex renaming for set to be merged in current one
+        let mut other_edges = other.edges.clone();
+        for other_edge in other_edges.iter_mut() {
+            // Rename PrimitiveIdx::Local, but preserve Global
+            for other_vert in [&mut other_edge.0, &mut other_edge.1] {
+                if let PrimitiveIdx::Local(_idx) = other_vert.idx {
+                    if let Some(vert) = verts.iter().find(|&v| v == other_vert) {
+                        if let PrimitiveIdx::Global(_) = other_vert.idx {
+                            assert_eq!(other_vert.idx, vert.idx, "Expected {:?} not to be renamed", other_vert.idx);
                         }
-                        other_edge.0
-                    },
-                    _ => {
-                        edges[pos].0
+                        trace!(
+                            "{:?} already exists,\
+                             reusing existing vertex {:?} instead of creating a new one.",
+                            other_vert,
+                            vert
+                        );
+                        *other_vert = *vert;
+                    } else {
+                        let new_vert = Vertex {
+                            value: other_vert.value,
+                            idx: PrimitiveIdx::Local(local_idx),
+                            from: other_vert.from,
+                        };
+                        trace!(
+                            "Renaming vertex {:?} to {:?} for union, as it is not present in the current set",
+                            other_vert.idx, local_idx
+                        );
+                        local_idx += 1;
+                        verts.push(new_vert);
+                        *other_vert = new_vert;
                     }
-                };
-                let v1 = match other_edge.1.idx {
-                    PrimitiveIdx::Global(_idx) => {
-                        if matches!(edges[pos].1.idx, PrimitiveIdx::Local(_)) {
-                            trace!("Replacing edge vertex {:?} with higher priority global vertex {:?}",
-                                edges[pos].1, other_edge.1);
-                            replace = true;
-                        }
-                        other_edge.1
-                    },
-                    _ => {
-                        edges[pos].1
-                    }
-                };
-                if replace {
-                    edges[pos] = Edge::new(v0, v1);
                 }
+            }
+        }
+
+        // 3. Merge edges, and update outer edges
+        for (other_pos, other_edge) in other_edges.into_iter().enumerate() {
+            let pos = edges.iter().position(|&e| e == other_edge);
+            if let Some(pos) = pos {
                 if let Some(outer_pos) = outer.iter().position(|&p| p == pos) {
-                    trace!("Removing edge {:?} from outer edges, as it is shared between both SplitEdges sets.", other_edge);
+                    trace!(
+                        "Removing edge {:?} from outer edges, as it is shared between both SplitEdges sets.",
+                        other_edge
+                    );
                     outer.remove(outer_pos);
-                } else if !outer.contains(&pos) && other.outer.contains(&other_pos) {
-                    trace!("Adding edge {:?} to outer edges, as it is only present in one of the SplitEdges sets.", other_edge);
-                    outer.push(pos);
+                } else if other.outer.contains(&other_pos) {
+                    error!("Did not expect outer edge of the other set to be inside the merging one.\n
+                        That means the set are not disjoint in surface");
                 }
             } else {
-                // Rename PrimitiveIdx::Local, but preserve Global
-                let v0 = match other_edge.0.idx {
-                    PrimitiveIdx::Local(_idx) => {
-                        if let Some(vert) = verts.iter().find(|&v| v == &other_edge.0) {
-                            trace!("Vertex {:?} already exists, reusing existing vertex instead of creating a new one.", vert);
-                            *vert
-                        } else {
-                            local_idx += 1;
-                            let new_vert = Vertex{
-                                value: other_edge.0.value,
-                                idx: PrimitiveIdx::Local(local_idx),
-                                from: other_edge.0.from,
-                            };
-                            verts.push(new_vert);
-                            new_vert
-                        }
-                    },
-                    _ => {other_edge.0}
-                };
-                let v1 = match other_edge.1.idx {
-                    PrimitiveIdx::Local(_idx) => {
-                        if let Some(vert) = verts.iter().find(|&v| v == &other_edge.1) {
-                            trace!("Vertex {:?} already exists, reusing existing vertex instead of creating a new one.", vert);
-                            *vert
-                        } else {
-                            local_idx += 1;
-                            let new_vert = Vertex{
-                                value: other_edge.1.value,
-                                idx: PrimitiveIdx::Local(local_idx),
-                                from: other_edge.1.from,
-                            };
-                            verts.push(new_vert);
-                            new_vert
-                        }
-                    },
-                    _ => {other_edge.1}
-                };
-                outer.push(edges.len());
-                edges.push(Edge::new(v0, v1));
-            }
-            if !edges.contains(other_edge) {
+                if other.outer.contains(&other_pos){
+                    outer.push(edges.len());
+                }
+                edges.push(other_edge);
             }
         }
-        assert!(outer.len() <= edges.len(), "Outer edges cannot be more than total edges");
-        assert!(outer.len() >= 3, "Outer edges must be at least 3 to form a polygon");
-        SplitEdges{
-            edges,
+
+        // Make sure we have a valid union
+        assert!(
+            outer.len() <= edges.len(),
+            "Outer edges cannot be more than total edges"
+        );
+        assert!(
+            outer.len() >= 3,
+            "Outer edges must be at least 3 to form a polygon, but found: {:?}",
             outer
-        }
+        );
+        SplitEdges { edges, outer }
     }
 
-    pub fn rename_vertices(&mut self, vertex_map: &std::collections::HashMap<IdxIntersection, PrimitiveIdx>) {
+    pub fn rename_vertices(
+        &mut self,
+        vertex_map: &std::collections::HashMap<IdxIntersection, PrimitiveIdx>,
+    ) {
         for edge in &mut self.edges {
             match edge.0.from {
                 Some(idx_inter) => {
                     if let Some(&new_idx) = vertex_map.get(&idx_inter) {
                         edge.0.idx = new_idx;
                     }
-                },
+                }
                 _ => {}
             }
             match edge.1.from {
@@ -369,7 +365,7 @@ impl SplitEdges {
                     if let Some(&new_idx) = vertex_map.get(&idx_inter) {
                         edge.1.idx = new_idx;
                     }
-                },
+                }
                 _ => {}
             }
         }
@@ -380,7 +376,11 @@ impl From<Vec<IdxTriangle>> for SplitEdges {
     fn from(value: Vec<IdxTriangle>) -> Self {
         let mut edges = Vec::new();
         for tri in value {
-            let tri_edges = [Edge::new(tri.verts[0], tri.verts[1]), Edge::new(tri.verts[1], tri.verts[2]), Edge::new(tri.verts[2], tri.verts[0])];
+            let tri_edges = [
+                Edge::new(tri.verts[0], tri.verts[1]),
+                Edge::new(tri.verts[1], tri.verts[2]),
+                Edge::new(tri.verts[2], tri.verts[0]),
+            ];
             for edge in tri_edges {
                 if !edges.contains(&edge) {
                     edges.push(edge);
@@ -391,7 +391,6 @@ impl From<Vec<IdxTriangle>> for SplitEdges {
     }
 }
 
-
 impl Collide<SplitEdges> for IdxTriangle {
     fn overlap(&self, other: &SplitEdges) -> bool {
         let split_verts = Vertex::from_edges(&other.edges);
@@ -401,13 +400,9 @@ impl Collide<SplitEdges> for IdxTriangle {
                 return true;
             }
         }
-        other
-            .edges
-            .iter()
-            .any(|edge| self.overlap(edge))
+        other.edges.iter().any(|edge| self.overlap(edge))
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -429,7 +424,6 @@ mod tests {
         let seg2 = Segment::new(Point3::new(1e-9, -1.0, 0.0), Point3::new(1e-9, 1.0, 0.0));
         assert!(matches!(seg1.intersect(&seg2), Some(_)));
         assert!(matches!(seg2.intersect_open(&seg1), Some(_)));
-
     }
 
     #[test]
@@ -451,7 +445,6 @@ mod tests {
         assert!(matches!(seg1.intersect(&seg2), Some(_)));
         assert!(matches!(seg1.intersect_open(&seg2), Some(_)));
         assert!(matches!(seg1.intersect_with_eps(&seg2, 1e-9), Some(_)));
-
     }
 
     #[test]
@@ -461,7 +454,8 @@ mod tests {
         let intersection = seg1.intersect(&seg2);
         assert!(intersection.is_some());
         assert!((intersection.unwrap()-Point3::new(0.5, 0.5, 0.)).abs().sum() < 1e-9,
-            "Expected intersection at (0.5, 0.5, 0), got {:?}", intersection.unwrap());
+            "Expected intersection at (0.5, 0.5, 0), got {:?}",
+            intersection.unwrap());
 
         let seg1 = Segment::new(Point3::new(1.0, 0.0, 0.0), Point3::new(1.0, 1.0, 0.0));
         let seg2 = Segment::new(Point3::new(0.8, 0.5, 0.0), Point3::new(2.0, 0.0, 0.0));
@@ -475,7 +469,8 @@ mod tests {
         let intersection = seg1.intersect_open(&seg2);
         assert!(intersection.is_some());
         assert!((intersection.unwrap()-Point3::new(0.5, 0.5, 0.)).abs().sum() < 1e-9,
-            "Expected intersection at (0.5, 0.5, 0), got {:?}", intersection.unwrap());
+            "Expected intersection at (0.5, 0.5, 0), got {:?}",
+            intersection.unwrap());
     }
 
     #[test]
@@ -494,5 +489,9 @@ mod tests {
         assert!(intersection.is_none());
     }
 
-}
+    #[test]
+    fn test_union_split_segments () {
+        // TODO: Write tests of interest, but also edge cases for degenerate scenarious
 
+    }
+}
