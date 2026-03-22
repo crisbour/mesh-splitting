@@ -240,6 +240,17 @@ impl IdxTriangle {
         norms
     }
 
+    pub fn invert_normals(&mut self) {
+        if let Some(ref mut idx_norms) = self.norms {
+            for norm in idx_norms.iter_mut() {
+                norm.value = Dir3::new_unchecked(-norm.value.into_inner());
+            }
+        }
+        self.tri.plane_norm = Dir3::new_unchecked(-self.tri.plane_norm.into_inner());
+        // Invert winding order of vertices to maintain consistency with the new normal direction
+        self.verts.reverse();
+    }
+
     pub fn from_edges(&self, edges: Vec<Edge>) -> Result<Vec<IdxTriangle>> {
         if edges.is_empty() {
             return Ok(Vec::new());

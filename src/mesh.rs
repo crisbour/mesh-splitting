@@ -314,6 +314,11 @@ impl Mesh {
             })
             .collect()
     }
+    pub fn invert_normal(&self) {
+        for tri in self.tris().iter_mut() {
+            tri.invert_normals();
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
